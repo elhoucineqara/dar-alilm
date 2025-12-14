@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter, usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -46,7 +46,20 @@ export default function CourseSettingsPage() {
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState(0);
   const [status, setStatus] = useState<'draft' | 'published'>('draft');
+  const [thumbnail, setThumbnailState] = useState('');
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [thumbnailType, setThumbnailType] = useState<'url' | 'upload'>('url');
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [saving, setSaving] = useState(false);
+  
+  // Wrapper to ensure thumbnail is always a string
+  const setThumbnail = (value: string | undefined | null) => {
+    const normalizedValue = typeof value === 'string' ? value : '';
+    setThumbnailState(normalizedValue);
+  };
+  
+  // Ensure thumbnailValue is always a string - use direct check instead of useMemo
+  const thumbnailValue = typeof thumbnail === 'string' ? thumbnail : '';
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -149,6 +162,17 @@ export default function CourseSettingsPage() {
         setDescription(data.course.description);
         setPrice(data.course.price || 0);
         setStatus(data.course.status || 'draft');
+        // Ensure thumbnail is always a string, never undefined
+        const courseThumbnail = data.course.thumbnail;
+        setThumbnailState(typeof courseThumbnail === 'string' ? courseThumbnail : '');
+        // Determine if thumbnail is a URL or GridFS fileId
+        if (data.course.thumbnail) {
+          if (data.course.thumbnail.startsWith('http') || data.course.thumbnail.startsWith('/')) {
+            setThumbnailType('url');
+          } else {
+            setThumbnailType('upload');
+          }
+        }
       }
     } catch (error) {
       console.error('Error fetching course:', error);
@@ -160,6 +184,35 @@ export default function CourseSettingsPage() {
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
+      let thumbnailUrl = thumbnailValue;
+
+      // Upload image if a file was selected
+      if (thumbnailType === 'upload' && thumbnailFile) {
+        setUploadingThumbnail(true);
+        const uploadFormData = new FormData();
+        uploadFormData.append('file', thumbnailFile);
+
+        const uploadRes = await fetch('/api/instructor/upload', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: uploadFormData,
+        });
+
+        if (!uploadRes.ok) {
+          const errorData = await uploadRes.json();
+          console.error(errorData.error || 'Failed to upload thumbnail');
+          setUploadingThumbnail(false);
+          setSaving(false);
+          return;
+        }
+
+        const uploadData = await uploadRes.json();
+        thumbnailUrl = uploadData.fileUrl; // Use fileUrl which points to /api/files/[id]
+        setUploadingThumbnail(false);
+      }
+
       const res = await fetch(`/api/instructor/courses/${courseId}`, {
         method: 'PUT',
         headers: {
@@ -171,6 +224,7 @@ export default function CourseSettingsPage() {
           description,
           price,
           status,
+          thumbnail: thumbnailUrl || undefined,
         }),
       });
 
@@ -472,7 +526,7 @@ export default function CourseSettingsPage() {
                 <input
                   type="text"
                   id="title"
-                  value={title}
+                  value={title || ''}
                   onChange={(e) => setTitle(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   required
@@ -485,12 +539,117 @@ export default function CourseSettingsPage() {
                 </label>
                 <textarea
                   id="description"
-                  value={description}
+                  value={description || ''}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={4}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none"
                   required
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Course Thumbnail
+                </label>
+                
+                {/* Toggle between URL and Upload */}
+                <div className="flex gap-2 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setThumbnailType('url');
+                      setThumbnailFile(null);
+                      // Keep thumbnail value if switching back to URL
+                      if (!thumbnailValue) {
+                        setThumbnail('');
+                      }
+                    }}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      thumbnailType === 'url'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    URL
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setThumbnailType('upload');
+                      setThumbnailFile(null);
+                      setThumbnail('');
+                    }}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      thumbnailType === 'upload'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Upload Image
+                  </button>
+                </div>
+
+                {thumbnailType === 'url' ? (
+                  <div>
+                    <input
+                      type="url"
+                      value={thumbnailValue}
+                      onChange={(e) => setThumbnail(e.target.value || '')}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      placeholder="https://example.com/image.jpg"
+                    />
+                    {course?.thumbnail && (
+                      <div className="mt-3">
+                        <p className="text-xs text-gray-500 mb-2">Current thumbnail:</p>
+                        <img
+                          src={course.thumbnail.startsWith('/api/files/') ? course.thumbnail : course.thumbnail}
+                          alt="Course thumbnail"
+                          className="w-full max-w-md h-48 object-cover rounded-lg border border-gray-200"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setThumbnailFile(file);
+                        }
+                      }}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    />
+                    {thumbnailFile && (
+                      <div className="mt-3">
+                        <p className="text-xs text-gray-500 mb-2">Preview:</p>
+                        <img
+                          src={URL.createObjectURL(thumbnailFile)}
+                          alt="Preview"
+                          className="w-full max-w-md h-48 object-cover rounded-lg border border-gray-200"
+                        />
+                      </div>
+                    )}
+                    {course?.thumbnail && !thumbnailFile && (
+                      <div className="mt-3">
+                        <p className="text-xs text-gray-500 mb-2">Current thumbnail:</p>
+                        <img
+                          src={course.thumbnail.startsWith('/api/files/') ? course.thumbnail : course.thumbnail}
+                          alt="Course thumbnail"
+                          className="w-full max-w-md h-48 object-cover rounded-lg border border-gray-200"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -534,10 +693,10 @@ export default function CourseSettingsPage() {
                 </Link>
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || uploadingThumbnail}
                   className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {saving ? 'Saving...' : 'Save Changes'}
+                  {uploadingThumbnail ? 'Uploading...' : saving ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             </form>

@@ -24,20 +24,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Validate file type
-    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'];
+    // Validate file type - accept documents and images
+    const allowedDocumentTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'];
+    const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
     const fileType = file.type;
     
-    // Check if file type is allowed
-    const isValidType = allowedTypes.includes(fileType) || 
+    // Check if file type is allowed (documents or images)
+    const isValidDocumentType = allowedDocumentTypes.includes(fileType) || 
       file.name.toLowerCase().endsWith('.pdf') ||
       file.name.toLowerCase().endsWith('.doc') ||
       file.name.toLowerCase().endsWith('.docx') ||
       file.name.toLowerCase().endsWith('.ppt') ||
       file.name.toLowerCase().endsWith('.pptx');
+    
+    const isValidImageType = allowedImageTypes.includes(fileType) ||
+      file.name.toLowerCase().endsWith('.jpg') ||
+      file.name.toLowerCase().endsWith('.jpeg') ||
+      file.name.toLowerCase().endsWith('.png') ||
+      file.name.toLowerCase().endsWith('.gif') ||
+      file.name.toLowerCase().endsWith('.webp') ||
+      file.name.toLowerCase().endsWith('.svg');
 
-    if (!isValidType) {
-      return NextResponse.json({ error: 'Invalid file type. Only PDF, Word, and PowerPoint files are allowed.' }, { status: 400 });
+    if (!isValidDocumentType && !isValidImageType) {
+      return NextResponse.json({ error: 'Invalid file type. Only PDF, Word, PowerPoint files and images (JPG, PNG, GIF, WebP, SVG) are allowed.' }, { status: 400 });
     }
 
     // Convert file to buffer
