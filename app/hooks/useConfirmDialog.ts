@@ -4,7 +4,6 @@ import { useState, useCallback } from 'react';
 
 interface ConfirmDialogOptions {
   title?: string;
-  message: string;
   confirmText?: string;
   cancelText?: string;
   confirmColor?: 'blue' | 'red' | 'green';
