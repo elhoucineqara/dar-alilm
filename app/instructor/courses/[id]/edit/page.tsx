@@ -353,7 +353,11 @@ export default function EditCoursePage() {
     setNewSectionDescription(section.description || '');
     setNewSectionType(section.type);
     if (section.type === 'file') {
-      setNewSectionFileType(section.fileType || 'pdf');
+      // Filter out 'video' type as it's not supported in the form
+      const validFileType = section.fileType && section.fileType !== 'video' 
+        ? section.fileType as 'pdf' | 'word' | 'ppt'
+        : 'pdf';
+      setNewSectionFileType(validFileType);
     } else {
       setNewSectionYoutubeUrl(section.youtubeUrl || '');
     }
