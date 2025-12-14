@@ -309,39 +309,40 @@ export default function CourseViewPage() {
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden" style={{ height: 'calc(100vh - 3rem)' }}>
         {/* Sidebar - Course Content */}
-        <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} fixed lg:sticky top-12 left-0 w-80 bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-300 z-40`} style={{ height: 'calc(100vh - 3rem)' }}>
-          <div className="lg:hidden p-4 border-b border-gray-200">
+        <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} fixed lg:sticky top-12 left-0 w-full lg:w-80 bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-300 z-40`} style={{ height: 'calc(100vh - 3rem)' }}>
+          <div className="lg:hidden p-3 sm:p-4 border-b border-gray-200 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">Course Content</h2>
             <button
               onClick={() => setSidebarOpen(false)}
               className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {/* Course Info */}
-            <div className="mb-6 pb-6 border-b border-gray-200">
-              <h1 className="text-xl font-bold text-gray-900 line-clamp-2">{course.title}</h1>
+            <div className="mb-4 sm:mb-6 pb-4 sm:pb-6 border-b border-gray-200">
+              <h1 className="text-lg sm:text-xl font-bold text-gray-900 line-clamp-2">{course.title}</h1>
             </div>
 
             {/* Course Content */}
             <div className="space-y-2">
-              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Course Content</h2>
+              <h2 className="hidden lg:block text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Course Content</h2>
               {course.modules && course.modules.length > 0 ? (
                 course.modules.map((module, moduleIndex) => (
                   <div key={module._id} className="mb-4">
                     <button
                       onClick={() => setExpandedModule(expandedModule === module._id ? null : module._id)}
-                      className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors group"
+                      className="w-full flex items-center justify-between p-2.5 sm:p-3 rounded-lg hover:bg-gray-50 transition-colors group"
                     >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-sm">
+                      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                        <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-xs sm:text-sm">
                           {moduleIndex + 1}
                         </div>
                         <div className="flex-1 min-w-0 text-left">
-                          <h3 className="font-semibold text-gray-900 text-sm group-hover:text-blue-600 transition-colors truncate">
+                          <h3 className="font-semibold text-gray-900 text-xs sm:text-sm group-hover:text-blue-600 transition-colors truncate">
                             {module.title}
                           </h3>
                           {module.sections && (
@@ -373,21 +374,22 @@ export default function CourseViewPage() {
                               onClick={() => {
                                 setActiveSection({ moduleId: module._id, sectionId: section._id });
                                 setActiveQuiz(null);
+                                setSidebarOpen(false);
                               }}
-                              className={`w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-all ${
+                              className={`w-full flex items-center gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-lg text-left transition-all ${
                                 isActive
                                   ? 'bg-blue-50 border border-blue-200 text-blue-700'
                                   : 'hover:bg-gray-50 text-gray-700'
                               }`}
                             >
-                              <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                              <div className={`flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-xs font-medium ${
                                 isActive ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
                               }`}>
                                 {sectionIndex + 1}
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium truncate">{section.title}</span>
+                                  <span className="text-xs sm:text-sm font-medium truncate">{section.title}</span>
                                   {section.type === 'file' && (
                                     <span className="text-xs">{getFileIcon(section.fileType)}</span>
                                   )}
@@ -413,22 +415,23 @@ export default function CourseViewPage() {
                               setActiveQuiz({ moduleId: module._id, quizId: module.quiz!._id });
                               setActiveSection(null);
                               setCurrentQuestionIndex(0);
+                              setSidebarOpen(false);
                             }}
-                            className={`w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-all mt-1 cursor-pointer ${
-                              activeQuiz && 'moduleId' in activeQuiz && activeQuiz.moduleId === module._id
-                                ? 'bg-purple-50 border border-purple-200 text-purple-700'
-                                : 'hover:bg-gray-50 text-gray-700'
-                            }`}
-                          >
-                            <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                              activeQuiz && 'moduleId' in activeQuiz && activeQuiz.moduleId === module._id
-                                ? 'bg-purple-600 text-white'
-                                : 'bg-gray-200 text-gray-600'
-                            }`}>
-                              🧩
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <span className="text-sm font-medium truncate">{module.quiz.title || 'Quiz'}</span>
+                    className={`w-full flex items-center gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-lg text-left transition-all mt-1 cursor-pointer ${
+                      activeQuiz && 'moduleId' in activeQuiz && activeQuiz.moduleId === module._id
+                        ? 'bg-purple-50 border border-purple-200 text-purple-700'
+                        : 'hover:bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <div className={`flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                      activeQuiz && 'moduleId' in activeQuiz && activeQuiz.moduleId === module._id
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-gray-200 text-gray-600'
+                    }`}>
+                      🧩
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs sm:text-sm font-medium truncate">{module.quiz.title || 'Quiz'}</span>
                               {module.quiz.questions && (
                                 <p className="text-xs text-gray-500 mt-0.5">
                                   {module.quiz.questions.length} {module.quiz.questions.length === 1 ? 'question' : 'questions'}
@@ -456,14 +459,15 @@ export default function CourseViewPage() {
                       setActiveQuiz({ type: 'final' });
                       setActiveSection(null);
                       setCurrentQuestionIndex(0);
+                      setSidebarOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-all cursor-pointer ${
+                    className={`w-full flex items-center gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-lg text-left transition-all cursor-pointer ${
                       activeQuiz && 'type' in activeQuiz && activeQuiz.type === 'final'
                         ? 'bg-purple-50 border border-purple-200 text-purple-700'
                         : 'hover:bg-gray-50 text-gray-700'
                     }`}
                   >
-                    <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                    <div className={`flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-xs font-medium ${
                       activeQuiz && 'type' in activeQuiz && activeQuiz.type === 'final'
                         ? 'bg-purple-600 text-white'
                         : 'bg-gray-200 text-gray-600'
@@ -471,7 +475,7 @@ export default function CourseViewPage() {
                       🎯
                     </div>
                     <div className="flex-1 min-w-0">
-                      <span className="text-sm font-medium truncate">{course.finalExam.title || 'Final Exam'}</span>
+                      <span className="text-xs sm:text-sm font-medium truncate">{course.finalExam.title || 'Final Exam'}</span>
                       {course.finalExam.questions && (
                         <p className="text-xs text-gray-500 mt-0.5">
                           {course.finalExam.questions.length} {course.finalExam.questions.length === 1 ? 'question' : 'questions'}
@@ -493,13 +497,13 @@ export default function CourseViewPage() {
           {currentQuiz ? (
             <div className="h-full flex flex-col overflow-hidden">
               {/* Quiz Header */}
-              <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-4">
+              <div className="flex-shrink-0 bg-white border-b border-gray-200 px-3 sm:px-4 lg:px-8 py-3 sm:py-4">
                 <div className="max-w-4xl mx-auto">
-                  <h1 className="text-xl lg:text-2xl font-bold text-gray-900 mb-1">
+                  <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mb-1">
                     {currentQuiz.title || (activeQuiz && 'type' in activeQuiz && activeQuiz.type === 'final' ? 'Final Exam' : 'Quiz')}
                   </h1>
                   {currentQuiz.description && (
-                    <p className="text-sm text-gray-600">{currentQuiz.description}</p>
+                    <p className="text-xs sm:text-sm text-gray-600">{currentQuiz.description}</p>
                   )}
                   {currentQuiz.passingScore && (
                     <p className="text-xs text-gray-500 mt-1">
@@ -512,19 +516,19 @@ export default function CourseViewPage() {
               {/* Quiz Content - One Question at a Time */}
               <div className="flex-1 overflow-hidden bg-gray-50 flex items-center justify-center">
                 {currentQuiz.questions && currentQuiz.questions.length > 0 ? (
-                  <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4 h-full flex items-center">
+                  <div className="max-w-4xl mx-auto w-full px-3 sm:px-4 lg:px-8 py-3 sm:py-4 h-full flex items-center">
                     {currentQuestionIndex < currentQuiz.questions.length ? (
-                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:p-8 w-full">
+                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 lg:p-8 w-full">
                         <div className="mb-4">
                           {(() => {
                             const currentQuestion = currentQuiz.questions![currentQuestionIndex];
                             return (
                               <>
-                                <h3 className="text-lg lg:text-xl font-semibold text-gray-900 mb-4 flex items-center gap-3">
-                                  <span className="flex-shrink-0 w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-lg">
+                                <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900 mb-3 sm:mb-4 flex items-start sm:items-center gap-2 sm:gap-3">
+                                  <span className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-base sm:text-lg">
                                     {currentQuestionIndex + 1}
                                   </span>
-                                  <span>{currentQuestion.question}</span>
+                                  <span className="flex-1">{currentQuestion.question}</span>
                                 </h3>
                                 
                                 {/* Display answers - works for all question types */}
@@ -551,27 +555,27 @@ export default function CourseViewPage() {
                                       }
                                     }}
                                     disabled={showResults}
-                                    className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
+                                    className={`w-full text-left p-2.5 sm:p-3 rounded-lg border-2 transition-all ${
                                       showCorrect
                                         ? 'bg-green-50 border-green-400 text-green-900'
                                         : showIncorrect
-                                        ? 'bg-red-50 border-red-400 text-red-900'
-                                        : isSelected
-                                        ? 'bg-blue-50 border-blue-400 text-blue-900'
-                                        : 'bg-white border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-50'
+                                          ? 'bg-red-50 border-red-400 text-red-900'
+                                          : isSelected
+                                            ? 'bg-blue-50 border-blue-400 text-blue-900'
+                                            : 'bg-white border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-50'
                                     } ${showResults ? 'cursor-default' : 'cursor-pointer'}`}
                                   >
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2 sm:gap-3">
                                       {showCorrect && (
-                                        <span className="text-green-600 font-bold text-lg">✓</span>
+                                        <span className="text-green-600 font-bold text-base sm:text-lg flex-shrink-0">✓</span>
                                       )}
                                       {showIncorrect && (
-                                        <span className="text-red-600 font-bold text-lg">✗</span>
+                                        <span className="text-red-600 font-bold text-base sm:text-lg flex-shrink-0">✗</span>
                                       )}
                                       {!showResults && isSelected && (
-                                        <span className="text-blue-600 font-bold text-lg">○</span>
+                                        <span className="text-blue-600 font-bold text-base sm:text-lg flex-shrink-0">○</span>
                                       )}
-                                      <span className="text-sm lg:text-base">{answer.answer}</span>
+                                      <span className="text-xs sm:text-sm lg:text-base">{answer.answer}</span>
                                     </div>
                                   </button>
                                 );
@@ -701,20 +705,20 @@ export default function CourseViewPage() {
                           }
                         }}
                         disabled={currentQuestionIndex === 0}
-                        className={`px-6 py-3 border border-gray-300 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                        className={`px-3 sm:px-4 lg:px-6 py-2 sm:py-2.5 lg:py-3 border border-gray-300 rounded-lg text-xs sm:text-sm font-medium transition-colors flex items-center gap-1 sm:gap-2 ${
                           currentQuestionIndex === 0
                             ? 'opacity-50 cursor-not-allowed'
                             : 'hover:bg-gray-50 text-gray-700 cursor-pointer'
                         }`}
                         style={{ pointerEvents: 'auto' }}
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                         </svg>
-                        Previous
+                        <span className="hidden sm:inline">Previous</span>
                       </button>
                       
-                      <div className="text-sm text-gray-600">
+                      <div className="text-xs sm:text-sm text-gray-600 px-2">
                         {currentQuestionIndex + 1} / {currentQuiz.questions.length}
                       </div>
                       
@@ -835,15 +839,15 @@ export default function CourseViewPage() {
                             }
                           }}
                           disabled={currentQuestionIndex >= currentQuiz.questions!.length - 1}
-                          className={`px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-semibold transition-all shadow-md hover:shadow-lg flex items-center gap-2 ${
+                          className={`px-3 sm:px-4 lg:px-6 py-2 sm:py-2.5 lg:py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg text-xs sm:text-sm font-semibold transition-all shadow-md hover:shadow-lg flex items-center gap-1 sm:gap-2 ${
                             currentQuestionIndex >= currentQuiz.questions!.length - 1
                               ? 'opacity-50 cursor-not-allowed'
                               : 'hover:from-blue-700 hover:to-purple-700 cursor-pointer'
                           }`}
                           style={{ pointerEvents: 'auto' }}
                         >
-                          Next
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <span className="hidden sm:inline">Next</span>
+                          <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                           </svg>
                         </button>
@@ -939,7 +943,7 @@ export default function CourseViewPage() {
               {/* Navigation - Fixed */}
               {currentSection && (
                 <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
-                  <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+                  <div className="max-w-4xl mx-auto w-full px-3 sm:px-4 lg:px-8 py-3 sm:py-4 flex items-center justify-between gap-2">
                     <button
                       type="button"
                       onClick={(e) => {
@@ -993,13 +997,13 @@ export default function CourseViewPage() {
                           }
                         }
                       }}
-                      className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-gray-700 transition-colors flex items-center gap-2 cursor-pointer relative z-50"
+                      className="px-3 sm:px-4 lg:px-6 py-2 sm:py-2.5 lg:py-3 border border-gray-300 rounded-lg hover:bg-gray-50 text-xs sm:text-sm font-medium text-gray-700 transition-colors flex items-center gap-1 sm:gap-2 cursor-pointer relative z-50"
                       style={{ pointerEvents: 'auto' }}
                     >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
-                    Previous
+                    <span className="hidden sm:inline">Previous</span>
                   </button>
                     <button
                       type="button"
@@ -1081,11 +1085,11 @@ export default function CourseViewPage() {
                           }
                         }
                       }}
-                      className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-semibold transition-all shadow-md hover:shadow-lg flex items-center gap-2 cursor-pointer relative z-50"
+                      className="px-3 sm:px-4 lg:px-6 py-2 sm:py-2.5 lg:py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg text-xs sm:text-sm font-semibold transition-all shadow-md hover:shadow-lg flex items-center gap-1 sm:gap-2 cursor-pointer relative z-50"
                       style={{ pointerEvents: 'auto' }}
                     >
-                      Next
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <span className="hidden sm:inline">Next</span>
+                      <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </button>
@@ -1101,9 +1105,9 @@ export default function CourseViewPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                   </svg>
                 </div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome to {course.title}</h2>
-                <p className="text-gray-600 mb-6">{course.description}</p>
-                <p className="text-sm text-gray-500">Select a lesson from the sidebar to begin learning</p>
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2 px-4">Welcome to {course.title}</h2>
+                <p className="text-sm sm:text-base text-gray-600 mb-6 px-4">{course.description}</p>
+                <p className="text-xs sm:text-sm text-gray-500 px-4">Select a lesson from the sidebar to begin learning</p>
               </div>
             </div>
           )}
