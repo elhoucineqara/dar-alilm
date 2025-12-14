@@ -95,7 +95,8 @@ export async function downloadFileFromGridFS(
     downloadStream.on('end', () => {
       const buffer = Buffer.concat(chunks);
       const filename = fileInfo.filename || 'file';
-      const contentType = fileInfo.contentType;
+      // contentType is stored in metadata, not directly on GridFSFile
+      const contentType = (fileInfo.metadata as any)?.contentType;
       const metadata = fileInfo.metadata;
 
       resolve({

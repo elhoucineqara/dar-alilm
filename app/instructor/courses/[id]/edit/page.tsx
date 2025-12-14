@@ -2260,7 +2260,9 @@ export default function EditCoursePage() {
                                         setQuestionAnswers([]);
                                         
                                         // Refresh questions
-                                        await fetchQuizQuestions(currentQuizId);
+                                        if (currentQuizId) {
+                                          await fetchQuizQuestions(currentQuizId);
+                                        }
                                         await fetchCourse(token!);
                                       } catch (error) {
                                         console.error('An error occurred. Please try again.');
@@ -2481,6 +2483,7 @@ export default function EditCoursePage() {
                                         
                                         {/* Questions dropdown toggle */}
                                         {(() => {
+                                          if (!module.quiz) return null;
                                           const quizId = typeof module.quiz === 'string' ? module.quiz : module.quiz._id;
                                           const hasQuestions = quizQuestions[quizId] && quizQuestions[quizId].length > 0;
                                           const isExpanded = expandedQuizQuestions[module._id] || false;
@@ -2534,9 +2537,11 @@ export default function EditCoursePage() {
                                                 setQuestionPoints(1);
                                                 setQuestionAnswers([]);
                                                 setEditingQuestion(null);
-                                                const quizId = typeof module.quiz === 'string' ? module.quiz : module.quiz._id;
-                                                if (!quizQuestions[quizId]) {
-                                                  fetchQuizQuestions(quizId);
+                                                if (module.quiz) {
+                                                  const quizId = typeof module.quiz === 'string' ? module.quiz : module.quiz._id;
+                                                  if (!quizQuestions[quizId]) {
+                                                    fetchQuizQuestions(quizId);
+                                                  }
                                                 }
                                                 // Scroll to question form after a short delay to ensure it's rendered
                                                 setTimeout(() => {
@@ -2558,6 +2563,7 @@ export default function EditCoursePage() {
                                 {/* Display questions if any - inside dropdown */}
                                 {(() => {
                                   // Handle both ObjectId string and populated quiz object
+                                  if (!module.quiz) return null;
                                   const quizId = typeof module.quiz === 'string' ? module.quiz : module.quiz._id;
                                   const hasQuestions = quizQuestions[quizId] && quizQuestions[quizId].length > 0;
                                   const isExpanded = expandedQuizQuestions[module._id] || false;
@@ -2571,7 +2577,7 @@ export default function EditCoursePage() {
                                     }}
                                     className="mt-2 space-y-2 border-t border-gray-200 pt-2"
                                   >
-                                    {quizQuestions[typeof module.quiz === 'string' ? module.quiz : module.quiz._id].map((q: Question, index: number) => (
+                                    {quizQuestions[quizId].map((q: Question, index: number) => (
                                       <div key={q._id} className="flex items-start justify-between p-2 bg-gray-50 rounded border border-gray-200">
                                         <div className="flex-1">
                                           <div className="flex items-center gap-2 mb-1">
@@ -2615,6 +2621,7 @@ export default function EditCoursePage() {
                                           </button>
                                           <button
                                             onClick={() => {
+                                              if (!module.quiz) return;
                                               const quizId = typeof module.quiz === 'string' ? module.quiz : module.quiz._id;
                                               handleDeleteQuestion(q._id, quizId);
                                             }}
@@ -2646,11 +2653,11 @@ export default function EditCoursePage() {
                                     </h6>
                                     <form onSubmit={(e) => {
                                       e.preventDefault();
+                                      if (!module.quiz) return;
+                                      const quizId = typeof module.quiz === 'string' ? module.quiz : module.quiz._id;
                                       if (editingQuestion) {
-                                        const quizId = typeof module.quiz === 'string' ? module.quiz : module.quiz._id;
                                         handleUpdateQuestion(e, editingQuestion, quizId);
                                       } else {
-                                        const quizId = typeof module.quiz === 'string' ? module.quiz : module.quiz._id;
                                         handleAddQuestion(e, quizId);
                                       }
                                     }} className="space-y-3">
