@@ -239,11 +239,13 @@ export default function CourseViewPage() {
 
   // Get current quiz
   const currentQuiz = activeQuiz
-    ? activeQuiz.type === 'final'
+    ? ('type' in activeQuiz && activeQuiz.type === 'final')
       ? course.finalExam
-      : course.modules
-          ?.find(m => m._id === activeQuiz.moduleId)
-          ?.quiz
+      : ('moduleId' in activeQuiz)
+        ? course.modules
+            ?.find(m => m._id === activeQuiz.moduleId)
+            ?.quiz
+        : null
     : null;
 
   return (
