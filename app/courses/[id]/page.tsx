@@ -122,6 +122,17 @@ export default function CourseViewPage() {
   const [quizCompleted, setQuizCompleted] = useState(false);
   const [quizScore, setQuizScore] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect mobile device
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     if (!courseId) return;
@@ -866,12 +877,48 @@ export default function CourseViewPage() {
                     <div className="h-full w-full overflow-hidden">
                       {/* Document Viewer */}
                       {currentSection.fileType === 'pdf' ? (
-                        <iframe
-                          src={`${getFileUrl(currentSection)}#toolbar=1&navpanes=1&scrollbar=1`}
-                          className="w-full h-full border-0"
-                          style={{ height: '100%', pointerEvents: 'auto' }}
-                          title={currentSection.fileName || 'PDF Document'}
-                        ></iframe>
+                        <div className="h-full w-full relative">
+                          {isMobile ? (
+                            // Mobile: Use object tag with iframe fallback and direct link option
+                            <div className="h-full w-full flex flex-col bg-gray-50">
+                              <object
+                                data={`${getFileUrl(currentSection)}#toolbar=1&navpanes=1&scrollbar=1`}
+                                type="application/pdf"
+                                className="flex-1 w-full border-0"
+                                style={{ minHeight: '500px' }}
+                              >
+                                <iframe
+                                  src={`${getFileUrl(currentSection)}#toolbar=1&navpanes=1&scrollbar=1`}
+                                  className="w-full h-full border-0"
+                                  style={{ minHeight: '500px' }}
+                                  title={currentSection.fileName || 'PDF Document'}
+                                ></iframe>
+                              </object>
+                              <div className="absolute bottom-20 left-0 right-0 flex justify-center z-10 px-4">
+                                <a
+                                  href={getFileUrl(currentSection)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-4 py-2.5 bg-white border-2 border-blue-600 text-blue-600 rounded-lg font-semibold shadow-lg hover:bg-blue-50 transition-colors text-sm flex items-center gap-2"
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                  Ouvrir dans le viewer
+                                </a>
+                              </div>
+                            </div>
+                          ) : (
+                            // Desktop: Use iframe
+                            <iframe
+                              src={`${getFileUrl(currentSection)}#toolbar=1&navpanes=1&scrollbar=1`}
+                              className="w-full h-full border-0"
+                              style={{ height: '100%', pointerEvents: 'auto' }}
+                              title={currentSection.fileName || 'PDF Document'}
+                              allow="fullscreen"
+                            ></iframe>
+                          )}
+                        </div>
                       ) : currentSection.fileType === 'word' || currentSection.fileType === 'ppt' ? (
                         <div className="w-full h-full flex items-center justify-center bg-gray-50 overflow-hidden">
                             <div className="text-center p-8">

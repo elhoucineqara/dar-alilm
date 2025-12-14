@@ -51,6 +51,12 @@ export async function GET(
         'Content-Type': mimeType,
         'Content-Disposition': `inline; filename="${filename}"`,
         'Content-Length': buffer.length.toString(),
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=3600',
+        // CORS headers for mobile compatibility
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
       },
     });
   } catch (error: any) {
