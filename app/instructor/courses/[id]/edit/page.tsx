@@ -78,7 +78,7 @@ interface Answer {
   order?: number;
 }
 
-interface QuizWithQuestions extends Quiz {
+interface QuizWithQuestions extends Omit<Quiz, 'questions'> {
   questions?: Question[];
 }
 
