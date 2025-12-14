@@ -87,7 +87,7 @@ export async function POST(
       return NextResponse.json({ error: 'Title and type are required' }, { status: 400 });
     }
 
-    if (type === 'file' && (!fileId && !fileUrl) || !fileType) {
+    if (type === 'file' && ((!fileId && !fileUrl) || !fileType)) {
       return NextResponse.json({ error: 'File ID (or URL) and file type are required for file sections' }, { status: 400 });
     }
 
