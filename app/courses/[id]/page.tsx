@@ -242,9 +242,12 @@ export default function CourseViewPage() {
     ? ('type' in activeQuiz && activeQuiz.type === 'final')
       ? course.finalExam
       : ('moduleId' in activeQuiz)
-        ? course.modules
-            ?.find(m => m._id === activeQuiz.moduleId)
-            ?.quiz
+        ? (() => {
+            const moduleQuiz = activeQuiz as { moduleId: string; quizId: string };
+            return course.modules
+              ?.find(m => m._id === moduleQuiz.moduleId)
+              ?.quiz;
+          })()
         : null
     : null;
 
@@ -412,13 +415,13 @@ export default function CourseViewPage() {
                               setCurrentQuestionIndex(0);
                             }}
                             className={`w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-all mt-1 cursor-pointer ${
-                              activeQuiz && 'type' in activeQuiz === false && activeQuiz.moduleId === module._id
+                              activeQuiz && 'moduleId' in activeQuiz && activeQuiz.moduleId === module._id
                                 ? 'bg-purple-50 border border-purple-200 text-purple-700'
                                 : 'hover:bg-gray-50 text-gray-700'
                             }`}
                           >
                             <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                              activeQuiz && 'type' in activeQuiz === false && activeQuiz.moduleId === module._id
+                              activeQuiz && 'moduleId' in activeQuiz && activeQuiz.moduleId === module._id
                                 ? 'bg-purple-600 text-white'
                                 : 'bg-gray-200 text-gray-600'
                             }`}>
@@ -432,7 +435,7 @@ export default function CourseViewPage() {
                                 </p>
                               )}
                             </div>
-                            {activeQuiz && 'type' in activeQuiz === false && activeQuiz.moduleId === module._id && (
+                            {activeQuiz && 'moduleId' in activeQuiz && activeQuiz.moduleId === module._id && (
                               <div className="flex-shrink-0 w-2 h-2 rounded-full bg-purple-600"></div>
                             )}
                           </button>
@@ -513,19 +516,23 @@ export default function CourseViewPage() {
                     {currentQuestionIndex < currentQuiz.questions.length ? (
                       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:p-8 w-full">
                         <div className="mb-4">
-                          <h3 className="text-lg lg:text-xl font-semibold text-gray-900 mb-4 flex items-center gap-3">
-                            <span className="flex-shrink-0 w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-lg">
-                              {currentQuestionIndex + 1}
-                            </span>
-                            <span>{currentQuiz.questions[currentQuestionIndex].question}</span>
-                          </h3>
-                          
-                          {/* Display answers - works for all question types */}
-                          {currentQuiz.questions[currentQuestionIndex].answers && 
-                           currentQuiz.questions[currentQuestionIndex].answers!.length > 0 ? (
-                            <div className="space-y-2">
-                              {currentQuiz.questions[currentQuestionIndex].answers!.map((answer) => {
-                                const questionId = currentQuiz.questions[currentQuestionIndex]._id;
+                          {(() => {
+                            const currentQuestion = currentQuiz.questions![currentQuestionIndex];
+                            return (
+                              <>
+                                <h3 className="text-lg lg:text-xl font-semibold text-gray-900 mb-4 flex items-center gap-3">
+                                  <span className="flex-shrink-0 w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-lg">
+                                    {currentQuestionIndex + 1}
+                                  </span>
+                                  <span>{currentQuestion.question}</span>
+                                </h3>
+                                
+                                {/* Display answers - works for all question types */}
+                                {currentQuestion.answers && 
+                                 currentQuestion.answers.length > 0 ? (
+                                  <div className="space-y-2">
+                                    {currentQuestion.answers.map((answer) => {
+                                      const questionId = currentQuestion._id;
                                 const isSelected = selectedAnswers[questionId] === answer._id;
                                 const isCorrect = answer.isCorrect;
                                 const showCorrect = showResults && isCorrect;
@@ -569,38 +576,41 @@ export default function CourseViewPage() {
                                   </button>
                                 );
                               })}
-                            </div>
-                          ) : (
-                            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                              <p className="text-yellow-800 text-sm">No answers available for this question.</p>
-                            </div>
-                          )}
-                          
-                          {/* Show result message if results are shown */}
-                          {showResults && currentQuiz.questions[currentQuestionIndex].answers && 
-                           selectedAnswers[currentQuiz.questions[currentQuestionIndex]._id] && (
-                            <div className={`mt-4 p-3 rounded-lg ${
-                              currentQuiz.questions[currentQuestionIndex].answers!.find(
-                                a => a._id === selectedAnswers[currentQuiz.questions[currentQuestionIndex]._id]
-                              )?.isCorrect
-                                ? 'bg-green-50 border border-green-200'
-                                : 'bg-red-50 border border-red-200'
-                            }`}>
-                              <p className={`text-sm font-medium ${
-                                currentQuiz.questions[currentQuestionIndex].answers!.find(
-                                  a => a._id === selectedAnswers[currentQuiz.questions[currentQuestionIndex]._id]
-                                )?.isCorrect
-                                  ? 'text-green-800'
-                                  : 'text-red-800'
-                              }`}>
-                                {currentQuiz.questions[currentQuestionIndex].answers!.find(
-                                  a => a._id === selectedAnswers[currentQuiz.questions[currentQuestionIndex]._id]
-                                )?.isCorrect
-                                  ? '✓ Correct!'
-                                  : '✗ Incorrect. The correct answer is highlighted in green.'}
-                              </p>
-                            </div>
-                          )}
+                                  </div>
+                                ) : (
+                                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                    <p className="text-yellow-800 text-sm">No answers available for this question.</p>
+                                  </div>
+                                )}
+                                
+                                {/* Show result message if results are shown */}
+                                {showResults && currentQuestion.answers && 
+                                 selectedAnswers[currentQuestion._id] && (
+                                  <div className={`mt-4 p-3 rounded-lg ${
+                                    currentQuestion.answers.find(
+                                      a => a._id === selectedAnswers[currentQuestion._id]
+                                    )?.isCorrect
+                                      ? 'bg-green-50 border border-green-200'
+                                      : 'bg-red-50 border border-red-200'
+                                  }`}>
+                                    <p className={`text-sm font-medium ${
+                                      currentQuestion.answers.find(
+                                        a => a._id === selectedAnswers[currentQuestion._id]
+                                      )?.isCorrect
+                                        ? 'text-green-800'
+                                        : 'text-red-800'
+                                    }`}>
+                                      {currentQuestion.answers.find(
+                                        a => a._id === selectedAnswers[currentQuestion._id]
+                                      )?.isCorrect
+                                        ? '✓ Correct!'
+                                        : '✗ Incorrect. The correct answer is highlighted in green.'}
+                                    </p>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     ) : (
@@ -722,10 +732,11 @@ export default function CourseViewPage() {
                               
                               if (activeQuiz && 'moduleId' in activeQuiz) {
                                 // Find current module
+                                const moduleQuiz = activeQuiz as { moduleId: string; quizId: string };
                                 for (let i = 0; i < modules.length; i++) {
                                   const module = modules[i];
                                   
-                                  if (module._id === activeQuiz.moduleId) {
+                                  if (module._id === moduleQuiz.moduleId) {
                                     // Try first section of next module
                                     if (i < modules.length - 1) {
                                       const nextModule = modules[i + 1];
