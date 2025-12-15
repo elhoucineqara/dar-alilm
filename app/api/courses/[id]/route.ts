@@ -58,11 +58,40 @@ export async function GET(
       return NextResponse.json({ error: 'Course not found' }, { status: 404 });
     }
 
-    // Only allow access to free courses (price === 0) without authentication
+    // Check if user is authenticated and enrolled for paid courses
+    const authHeader = request.headers.get('authorization');
+    let isEnrolled = false;
+    
     if (course.price !== 0 && course.price !== undefined && course.price !== null) {
-      return NextResponse.json({ 
-        error: 'This course requires authentication and payment' 
-      }, { status: 403 });
+      // Paid course - check if user is enrolled
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const token = authHeader.substring(7);
+          const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string; role: string };
+          
+          if (decoded.role === 'student') {
+            // Check if student is enrolled
+            const Enrollment = require('@/models/Enrollment').default;
+            const enrollment = await Enrollment.findOne({
+              userId: decoded.userId,
+              courseId: courseId,
+            }).lean();
+            
+            isEnrolled = !!enrollment;
+          }
+        } catch (error) {
+          // Token invalid or expired - treat as not enrolled
+          console.error('Error checking enrollment:', error);
+        }
+      }
+      
+      // If not enrolled in paid course, deny access
+      if (!isEnrolled) {
+        return NextResponse.json({ 
+          error: 'This course requires enrollment. Please enroll first.' 
+        }, { status: 403 });
+      }
     }
 
     // Load category manually

@@ -376,12 +376,62 @@ export default function Home() {
                           ${course.price === 0 ? 'Free' : course.price.toFixed(2)}
                         </span>
                       </div>
-                      <Link
-                        href={`/courses/${course._id}`}
+                      <button
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          const token = localStorage.getItem('token');
+                          const userStr = localStorage.getItem('user');
+                          
+                          if (token && userStr) {
+                            try {
+                              const user = JSON.parse(userStr);
+                              if (user.role === 'student') {
+                                // Auto-enroll student in course
+                                try {
+                                  const enrollRes = await fetch('/api/student/enroll', {
+                                    method: 'POST',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                      Authorization: `Bearer ${token}`,
+                                    },
+                                    body: JSON.stringify({ courseId: course._id }),
+                                  });
+                                  
+                                  // Even if enrollment fails (already enrolled), redirect to dashboard
+                                  if (!enrollRes.ok) {
+                                    const errorData = await enrollRes.json();
+                                    // If already enrolled, that's fine - redirect to dashboard
+                                    if (errorData.error === 'Already enrolled in this course') {
+                                      router.push(`/dashboard/courses/${course._id}`);
+                                      return;
+                                    }
+                                    console.error('Enrollment error:', errorData);
+                                  } else {
+                                    // Successfully enrolled, redirect to dashboard course page
+                                    router.push(`/dashboard/courses/${course._id}`);
+                                    return;
+                                  }
+                                } catch (enrollError) {
+                                  console.error('Enrollment error:', enrollError);
+                                }
+                              }
+                            } catch (parseError) {
+                              console.error('Error parsing user:', parseError);
+                            }
+                          }
+                          
+                          // If not logged in or not a student, redirect to public course page (free courses only)
+                          if (course.price === 0) {
+                            router.push(`/courses/${course._id}`);
+                          } else {
+                            // Paid course requires login
+                            router.push('/login');
+                          }
+                        }}
                         className="block w-full text-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm transition-colors"
                       >
-                        View Course
-                      </Link>
+                        {isAuthenticated && userRole === 'student' ? 'Suivre le cours' : 'View Course'}
+                      </button>
                     </div>
                   </div>
                 );

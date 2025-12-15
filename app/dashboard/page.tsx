@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import StudentLayout from '../components/StudentLayout';
 
 interface User {
   id: string;
@@ -52,6 +53,9 @@ export default function DashboardPage() {
   const [recentCourses, setRecentCourses] = useState<Course[]>([]);
   const [loadingStats, setLoadingStats] = useState(true);
   const [loadingCourses, setLoadingCourses] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -144,6 +148,20 @@ export default function DashboardPage() {
     router.push('/login');
   };
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowProfileDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -160,48 +178,20 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/" className="flex items-center gap-2">
-                <img src="/logo.svg" alt="Dar Al-Ilm Logo" className="w-8 h-8" />
-                <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  Dar Al-Ilm
-                </span>
-              </Link>
-              <nav className="hidden md:flex items-center gap-6 ml-8">
-                <Link href="/dashboard" className="text-blue-600 font-medium">Dashboard</Link>
-                <Link href="/dashboard/courses" className="text-gray-700 hover:text-blue-600 transition-colors">Mes Cours</Link>
-                <Link href="/dashboard/progress" className="text-gray-700 hover:text-blue-600 transition-colors">Progression</Link>
-              </nav>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">
-                {user.firstName} {user.lastName}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
-              >
-                Déconnexion
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Bienvenue, {user.firstName} !
-          </h1>
-          <p className="text-gray-600">Continuez votre apprentissage et atteignez vos objectifs</p>
-        </div>
-
+    <StudentLayout
+      user={user}
+      sidebarOpen={sidebarOpen}
+      setSidebarOpen={setSidebarOpen}
+      showProfileDropdown={showProfileDropdown}
+      setShowProfileDropdown={setShowProfileDropdown}
+      dropdownRef={dropdownRef}
+      onProfileClick={() => router.push('/dashboard/profile')}
+      onSettingsClick={() => router.push('/dashboard/settings')}
+      onLogout={handleLogout}
+      pageTitle="Dashboard"
+      pageSubtitle={`Bienvenue, ${user.firstName} !`}
+    >
+      <div className="max-w-7xl mx-auto">
         {/* Statistics Cards */}
         {loadingStats ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -296,7 +286,7 @@ export default function DashboardPage() {
               {recentCourses.map((item) => (
                 <Link
                   key={item.enrollment._id}
-                  href={`/courses/${item.course._id}`}
+                  href={`/dashboard/courses/${item.course._id}`}
                   className="group bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-all"
                 >
                   {item.course.thumbnail ? (
@@ -349,8 +339,8 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-      </main>
-    </div>
+      </div>
+    </StudentLayout>
   );
 }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Course from '@/models/Course';
 import User from '@/models/User';
+import Enrollment from '@/models/Enrollment';
 import jwt from 'jsonwebtoken';
 
 export async function GET(request: NextRequest) {
@@ -33,10 +34,20 @@ export async function GET(request: NextRequest) {
       status: 'published' 
     });
 
-    // For now, we'll set students and enrollments to 0
-    // TODO: Implement enrollment system to track real students and enrollments
-    const totalStudents = 0;
-    const totalEnrollments = 0;
+    // Get all instructor's courses
+    const instructorCourses = await Course.find({ instructorId }).select('_id');
+    const courseIds = instructorCourses.map((course) => course._id);
+
+    // Get total enrollments for instructor's courses
+    const totalEnrollments = await Enrollment.countDocuments({ 
+      courseId: { $in: courseIds } 
+    });
+
+    // Get unique students enrolled in instructor's courses
+    const enrollments = await Enrollment.find({ 
+      courseId: { $in: courseIds } 
+    }).distinct('userId');
+    const totalStudents = enrollments.length;
 
     return NextResponse.json({
       statistics: {

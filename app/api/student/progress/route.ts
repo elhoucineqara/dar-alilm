@@ -102,6 +102,9 @@ export async function GET(request: NextRequest) {
           completedQuizzes: progress.completedQuizzes,
           completedFinalExam: progress.completedFinalExam,
           lastAccessedAt: progress.lastAccessedAt,
+          moduleId: progress.moduleId,
+          sectionId: progress.sectionId,
+          quizId: progress.quizId,
         },
         course,
         modules: modulesWithProgress,
@@ -141,7 +144,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Only students can update progress' }, { status: 403 });
     }
 
-    const { courseId, sectionId, quizId, completedFinalExam } = await request.json();
+    const { courseId, moduleId, sectionId, quizId, completedFinalExam } = await request.json();
 
     if (!courseId) {
       return NextResponse.json({ error: 'Course ID is required' }, { status: 400 });
@@ -182,17 +185,32 @@ export async function PUT(request: NextRequest) {
       });
     }
 
-    // Update progress
-    if (sectionId && !progress.completedSections.includes(sectionId)) {
-      progress.completedSections.push(sectionId);
+    // Update last accessed location
+    if (moduleId) {
+      progress.moduleId = moduleId;
     }
-
-    if (quizId && !progress.completedQuizzes.includes(quizId)) {
-      progress.completedQuizzes.push(quizId);
+    if (sectionId) {
+      progress.sectionId = sectionId;
+      progress.quizId = undefined; // Clear quizId when viewing a section
+      // Mark section as completed if not already
+      if (!progress.completedSections.includes(sectionId)) {
+        progress.completedSections.push(sectionId);
+      }
+    }
+    if (quizId) {
+      progress.quizId = quizId;
+      progress.sectionId = undefined; // Clear sectionId when viewing a quiz
+      // Mark quiz as completed if not already
+      if (!progress.completedQuizzes.includes(quizId)) {
+        progress.completedQuizzes.push(quizId);
+      }
     }
 
     if (completedFinalExam !== undefined) {
       progress.completedFinalExam = completedFinalExam;
+      if (completedFinalExam) {
+        progress.quizId = undefined; // Clear quizId when final exam is completed
+      }
     }
 
     // Calculate overall progress

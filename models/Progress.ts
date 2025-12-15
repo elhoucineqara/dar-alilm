@@ -65,6 +65,7 @@ const ProgressSchema = new Schema<IProgress>(
       default: 0,
       min: 0,
       max: 100,
+      set: (v: number) => Math.min(v, 100), // Cap at 100%
     },
     lastAccessedAt: {
       type: Date,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Course from '@/models/Course';
 import Category from '@/models/Category';
+import Enrollment from '@/models/Enrollment';
 import jwt from 'jsonwebtoken';
 
 // GET all courses for the instructor
@@ -23,7 +24,18 @@ export async function GET(request: NextRequest) {
       .populate('categoryId', 'name')
       .sort({ createdAt: -1 });
     
-    return NextResponse.json({ courses }, { status: 200 });
+    // Add student count to each course
+    const coursesWithStats = await Promise.all(
+      courses.map(async (course) => {
+        const studentsCount = await Enrollment.countDocuments({ courseId: course._id });
+        return {
+          ...course.toObject(),
+          studentsCount,
+        };
+      })
+    );
+    
+    return NextResponse.json({ courses: coursesWithStats }, { status: 200 });
   } catch (error: any) {
     console.error('Error fetching courses:', error);
     if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {

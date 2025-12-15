@@ -140,7 +140,14 @@ export default function CourseViewPage() {
     const fetchCourse = async () => {
       try {
         setLoading(true);
-        const res = await fetch(`/api/courses/${courseId}`);
+        const token = localStorage.getItem('token');
+        const headers: HeadersInit = {};
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        const res = await fetch(`/api/courses/${courseId}`, {
+          headers,
+        });
         
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
