@@ -21,6 +21,7 @@ interface StudentLayoutProps {
   onLogout: () => void;
   pageTitle: string;
   pageSubtitle?: string;
+  hideSidebar?: boolean;
 }
 
 export default function StudentLayout({
@@ -28,6 +29,7 @@ export default function StudentLayout({
   user,
   sidebarOpen,
   setSidebarOpen,
+  hideSidebar = false,
   showProfileDropdown,
   setShowProfileDropdown,
   dropdownRef,
@@ -43,15 +45,38 @@ export default function StudentLayout({
     <div className="h-screen bg-gray-50 overflow-hidden flex flex-col">
       {/* No overlay on desktop - sidebar slides over content */}
 
-      {/* Sidebar - Hidden on mobile, visible on desktop (collapsed or expanded) */}
-      <aside className={`hidden lg:block fixed bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 border-r border-gray-700 h-screen overflow-y-auto z-40 transform transition-all duration-300 ease-in-out ${
-        sidebarOpen ? 'w-64 translate-x-0' : 'w-20 -translate-x-0'
-      }`} style={{
-        boxShadow: '4px 0 20px rgba(0, 0, 0, 0.3), 2px 0 10px rgba(0, 0, 0, 0.2)'
-      }}>
+      {/* Sidebar - Hidden on mobile, visible on desktop (collapsed or expanded) - Hidden in review mode */}
+      {!hideSidebar && (
+        <aside className={`hidden lg:block fixed bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 border-r border-gray-700 h-screen overflow-y-auto z-40 transform transition-all duration-300 ease-in-out ${
+          sidebarOpen ? 'w-64 translate-x-0' : 'w-20 -translate-x-0'
+        }`} style={{
+          boxShadow: '4px 0 20px rgba(0, 0, 0, 0.3), 2px 0 10px rgba(0, 0, 0, 0.2)'
+        }}>
         <div className={`p-5 transition-all duration-300 ${sidebarOpen ? '' : 'px-3'}`}>
+          {/* Toggle Button - At top of sidebar */}
+          <div className={`flex items-center ${sidebarOpen ? 'justify-end' : 'justify-center'} mb-4`}>
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="group relative p-2 text-gray-400 hover:text-white hover:bg-gradient-to-r hover:from-blue-500/20 hover:to-purple-500/20 rounded-lg transition-all duration-300"
+              aria-label={sidebarOpen ? "Réduire la sidebar" : "Étendre la sidebar"}
+              title={sidebarOpen ? "Réduire la sidebar" : "Étendre la sidebar"}
+            >
+              {sidebarOpen ? (
+                // Icon for collapse (chevrons left)
+                <svg className="w-5 h-5 transition-all duration-300 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                </svg>
+              ) : (
+                // Icon for expand (chevrons right)
+                <svg className="w-5 h-5 transition-all duration-300 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                </svg>
+              )}
+            </button>
+          </div>
+
           {/* Logo Section */}
-          <div className={`flex items-center ${sidebarOpen ? 'justify-between' : 'justify-center'} mb-8 pb-6 border-b border-gray-700`}>
+          <div className={`flex items-center ${sidebarOpen ? 'justify-start' : 'justify-center'} mb-8 pb-6 border-b border-gray-700`}>
             <Link href="/" className={`flex items-center ${sidebarOpen ? 'gap-2' : 'justify-center'} group`}>
               <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg group-hover:scale-110 transition-transform">
                 <img src="/logo.svg" alt="Dar Al-Ilm Logo" className="w-6 h-6" />
@@ -62,18 +87,6 @@ export default function StudentLayout({
                 </span>
               )}
             </Link>
-            {sidebarOpen && (
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="lg:hidden group relative p-2 text-gray-400 hover:text-white hover:bg-gradient-to-r hover:from-blue-500/20 hover:to-purple-500/20 rounded-lg transition-all duration-300"
-                aria-label="Close sidebar"
-              >
-                <div className="relative w-5 h-5">
-                  <span className="absolute top-1/2 left-0 w-4 h-0.5 bg-current transform rotate-45 translate-y-0 transition-all duration-300 group-hover:scale-110"></span>
-                  <span className="absolute top-1/2 left-0 w-4 h-0.5 bg-current transform -rotate-45 translate-y-0 transition-all duration-300 group-hover:scale-110"></span>
-                </div>
-              </button>
-            )}
           </div>
 
           {/* Navigation */}
@@ -156,10 +169,11 @@ export default function StudentLayout({
             </Link>
           </nav>
         </div>
-      </aside>
+        </aside>
+      )}
 
       {/* Main Content */}
-      <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
+      <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${hideSidebar ? '' : sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
         {/* Top Header */}
         <header className={`flex-shrink-0 bg-white/95 backdrop-blur-md border-b border-gray-200 z-30 transition-all duration-300`} style={{
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08), 0 2px 10px rgba(0, 0, 0, 0.04)'
@@ -167,25 +181,26 @@ export default function StudentLayout({
           <div className="px-4 sm:px-6 py-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                {/* Toggle button - Only visible on desktop */}
-                <button
-                  onClick={() => setSidebarOpen(!sidebarOpen)}
-                  className="hidden lg:flex group relative p-2.5 text-gray-600 hover:text-gray-900 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 rounded-xl transition-all duration-300 hover:shadow-md"
-                  aria-label="Toggle sidebar"
-                >
-                  <div className="relative w-6 h-6">
-                    <span className={`absolute top-1/2 left-0 w-5 h-0.5 bg-current transform transition-all duration-300 ${sidebarOpen ? 'rotate-45 translate-y-0' : '-translate-y-1.5'}`}></span>
-                    <span className={`absolute top-1/2 left-0 w-5 h-0.5 bg-current transform transition-all duration-300 ${sidebarOpen ? 'opacity-0' : 'opacity-100'}`}></span>
-                    <span className={`absolute top-1/2 left-0 w-5 h-0.5 bg-current transform transition-all duration-300 ${sidebarOpen ? '-rotate-45 translate-y-0' : 'translate-y-1.5'}`}></span>
-                  </div>
-                  <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500/0 via-purple-500/0 to-purple-600/0 group-hover:from-blue-500/10 group-hover:via-purple-500/10 group-hover:to-purple-600/10 transition-all duration-300"></div>
-                </button>
                 <div>
                   <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 bg-clip-text text-transparent">{pageTitle}</h1>
                   {pageSubtitle && <p className="text-sm text-gray-500 mt-0.5">{pageSubtitle}</p>}
                 </div>
               </div>
               <div className="flex items-center gap-3">
+                {/* Back to My Courses button - Only visible when sidebar is hidden */}
+                {hideSidebar && (
+                  <Link 
+                    href="/dashboard/courses"
+                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-semibold transition-all shadow-md hover:shadow-lg"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                    <span className="hidden sm:inline">Back to My Courses</span>
+                    <span className="sm:hidden">Courses</span>
+                  </Link>
+                )}
+                
                 <button className="p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all relative group">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />

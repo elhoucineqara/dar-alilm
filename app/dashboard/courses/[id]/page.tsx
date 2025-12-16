@@ -156,6 +156,18 @@ export default function DashboardCourseViewPage() {
   const [isReviewingCourse, setIsReviewingCourse] = useState(false);
   const [certificateUrl, setCertificateUrl] = useState<string | null>(null);
   const [generatingCertificate, setGeneratingCertificate] = useState(false);
+  const [showCopyToast, setShowCopyToast] = useState(false);
+  
+  // Anti-fraud system
+  const [tabSwitchCount, setTabSwitchCount] = useState(0);
+  const [showFraudWarning, setShowFraudWarning] = useState(false);
+  const [isQuizLocked, setIsQuizLocked] = useState(false);
+  const [fraudAttempts, setFraudAttempts] = useState<string[]>([]);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [skippedQuestions, setSkippedQuestions] = useState<string[]>([]);
+  const [tamperingDetected, setTamperingDetected] = useState(false);
+  const [showRedBorder, setShowRedBorder] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
 
   // Detect mobile device
   useEffect(() => {
@@ -281,7 +293,7 @@ export default function DashboardCourseViewPage() {
         const errorData = await courseRes.json();
         // If it's a 403, it means course requires enrollment
         if (courseRes.status === 403) {
-          setError('Ce cours nécessite une inscription. Veuillez vous inscrire depuis la page des cours.');
+          setError('This course requires enrollment. Please enroll from the courses page.');
         } else {
           setError(errorData.error || 'Impossible de charger les détails du cours');
         }
@@ -442,6 +454,90 @@ export default function DashboardCourseViewPage() {
     router.push('/login');
   };
 
+  // Auto-skip to next question on fraud detection
+  const skipToNextQuestion = () => {
+    if (!activeQuiz || quizCompleted || isBlocked) return;
+    
+    const currentQuiz = activeQuiz && 'type' in activeQuiz && activeQuiz.type === 'final' 
+      ? course?.finalExam 
+      : course?.modules?.find(m => 'moduleId' in activeQuiz && m._id === activeQuiz.moduleId)?.quiz;
+    
+    if (!currentQuiz || !currentQuiz.questions) return;
+
+    // Mark current question as skipped
+    const currentQuestionId = currentQuiz.questions[currentQuestionIndex]?._id;
+    if (currentQuestionId) {
+      setSkippedQuestions(prev => [...prev, currentQuestionId]);
+    }
+    
+    // Show red border and block for 3 seconds
+    setShowRedBorder(true);
+    setIsBlocked(true);
+    
+    setTimeout(() => {
+      setShowRedBorder(false);
+      
+      // Check if this is the last question
+      if (currentQuestionIndex >= (currentQuiz.questions?.length || 0) - 1) {
+        // Last question - calculate score and complete quiz
+        const score = calculateQuizScore(currentQuiz);
+        setQuizScore(score);
+        setQuizCompleted(true);
+        setShowResults(false);
+        
+        // Auto-navigate to next module or final exam after completing quiz
+        setTimeout(() => {
+          if ('type' in activeQuiz && activeQuiz.type === 'final') {
+            // If this was the final exam, close it
+            setActiveQuiz(null);
+            setQuizCompleted(false);
+            setCurrentQuestionIndex(0);
+            setSelectedAnswers({});
+          } else if ('moduleId' in activeQuiz) {
+            // Find current module and move to next
+            const currentModuleIndex = course?.modules?.findIndex(m => m._id === activeQuiz.moduleId) || 0;
+            const nextModule = course?.modules?.[currentModuleIndex + 1];
+            
+            if (nextModule) {
+              // Move to next module's first section
+              if (nextModule.sections && nextModule.sections.length > 0) {
+                setActiveSection({ moduleId: nextModule._id, sectionId: nextModule.sections[0]._id });
+                setActiveQuiz(null);
+              } else if (nextModule.quiz) {
+                // If no sections, start the next module's quiz
+                setActiveQuiz({ moduleId: nextModule._id, quizId: nextModule.quiz._id });
+              }
+              setQuizCompleted(false);
+              setCurrentQuestionIndex(0);
+              setSelectedAnswers({});
+            } else {
+              // No more modules, start final exam if available
+              if (course?.finalExam) {
+                setActiveQuiz({ type: 'final' });
+                setActiveSection(null);
+                setQuizCompleted(false);
+                setCurrentQuestionIndex(0);
+                setSelectedAnswers({});
+              } else {
+                // No final exam, close quiz
+                setActiveQuiz(null);
+                setQuizCompleted(false);
+                setCurrentQuestionIndex(0);
+                setSelectedAnswers({});
+              }
+            }
+          }
+        }, 1000);
+      } else {
+        // Move to next question
+        setCurrentQuestionIndex(prev => prev + 1);
+        setShowResults(false);
+      }
+      
+      setIsBlocked(false);
+    }, 3000);
+  };
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -463,6 +559,12 @@ export default function DashboardCourseViewPage() {
     setShowResults(false);
     setQuizCompleted(false);
     setQuizScore(null);
+    // Reset fraud detection when starting new quiz
+    setTabSwitchCount(0);
+    setIsQuizLocked(false);
+    setFraudAttempts([]);
+    setShowFraudWarning(false);
+    setSkippedQuestions([]);
   }, [activeQuiz]);
   
   // Reset showResults when question changes
@@ -476,6 +578,160 @@ export default function DashboardCourseViewPage() {
       updateProgress(activeSection.moduleId, activeSection.sectionId);
     }
   }, [activeSection]);
+
+  // Request fullscreen when quiz starts
+  useEffect(() => {
+    if (activeQuiz && !quizCompleted && !isFullScreen) {
+      const elem = document.documentElement;
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen().then(() => {
+          setIsFullScreen(true);
+        }).catch(() => {
+          // Fullscreen request failed, continue anyway
+        });
+      }
+    }
+
+    // Exit fullscreen when quiz ends
+    if ((!activeQuiz || quizCompleted) && isFullScreen) {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().then(() => {
+          setIsFullScreen(false);
+        }).catch(() => {
+          // Exit fullscreen failed
+        });
+      }
+    }
+  }, [activeQuiz, quizCompleted]);
+
+  // Detect fullscreen exit
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && activeQuiz && !quizCompleted) {
+        const newCount = tabSwitchCount + 1;
+        setTabSwitchCount(newCount);
+        setFraudAttempts(prev => [...prev, `Fullscreen exit detected at ${new Date().toLocaleTimeString()}`]);
+        
+        // Skip to next question immediately - NO LOCKING, just skip
+        skipToNextQuestion();
+      }
+      setIsFullScreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, [activeQuiz, quizCompleted, tabSwitchCount, currentQuestionIndex, selectedAnswers]);
+
+  // Anti-fraud detection system
+  useEffect(() => {
+    if (!activeQuiz || quizCompleted) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        const newCount = tabSwitchCount + 1;
+        setTabSwitchCount(newCount);
+        setFraudAttempts(prev => [...prev, `Tab switch detected at ${new Date().toLocaleTimeString()}`]);
+        
+        // Skip to next question immediately - NO LOCKING, just skip
+        skipToNextQuestion();
+      }
+    };
+
+    const handleBlur = () => {
+      if (!document.hidden) {
+        const newCount = tabSwitchCount + 1;
+        setTabSwitchCount(newCount);
+        setFraudAttempts(prev => [...prev, `Window blur detected at ${new Date().toLocaleTimeString()}`]);
+        
+        // Skip to next question immediately - NO LOCKING, just skip
+        skipToNextQuestion();
+      }
+    };
+
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      setFraudAttempts(prev => [...prev, `Right-click blocked at ${new Date().toLocaleTimeString()}`]);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Allow only typing letters, numbers, and basic navigation
+      const allowedKeys = ['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape', 'Backspace', 'Delete'];
+      
+      // Block all Ctrl combinations - Trigger fraud detection
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        
+        // Log the specific fraud attempt
+        const fraudMessage = e.key ? `Ctrl+${e.key.toUpperCase()} blocked` : 'Ctrl key blocked';
+        setFraudAttempts(prev => [...prev, `${fraudMessage} at ${new Date().toLocaleTimeString()}`]);
+        
+        // Skip to next question with red border
+        skipToNextQuestion();
+        return;
+      }
+      
+      // Block F12 and other function keys
+      if (e.key === 'F12' || e.key.startsWith('F')) {
+        e.preventDefault();
+        setFraudAttempts(prev => [...prev, `Function key blocked at ${new Date().toLocaleTimeString()}`]);
+        return;
+      }
+      
+      // Block Alt key combinations
+      if (e.altKey && e.key !== 'Tab') {
+        e.preventDefault();
+        setFraudAttempts(prev => [...prev, `Alt combination blocked at ${new Date().toLocaleTimeString()}`]);
+        return;
+      }
+    };
+    
+    // Block copy event
+    const handleCopy = (e: ClipboardEvent) => {
+      e.preventDefault();
+      setFraudAttempts(prev => [...prev, `Copy attempt blocked at ${new Date().toLocaleTimeString()}`]);
+    };
+    
+    // Block paste event
+    const handlePaste = (e: ClipboardEvent) => {
+      e.preventDefault();
+      setFraudAttempts(prev => [...prev, `Paste attempt blocked at ${new Date().toLocaleTimeString()}`]);
+    };
+    
+    // Block cut event
+    const handleCut = (e: ClipboardEvent) => {
+      e.preventDefault();
+      setFraudAttempts(prev => [...prev, `Cut attempt blocked at ${new Date().toLocaleTimeString()}`]);
+    };
+    
+    // Block text selection
+    const handleSelectStart = (e: Event) => {
+      // Allow selection only in input/textarea for answering questions
+      const target = e.target as HTMLElement;
+      if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA' && !target.hasAttribute('contenteditable')) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('contextmenu', handleContextMenu);
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('copy', handleCopy);
+    document.addEventListener('paste', handlePaste);
+    document.addEventListener('cut', handleCut);
+    document.addEventListener('selectstart', handleSelectStart);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('contextmenu', handleContextMenu);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('copy', handleCopy);
+      document.removeEventListener('paste', handlePaste);
+      document.removeEventListener('cut', handleCut);
+      document.removeEventListener('selectstart', handleSelectStart);
+    };
+  }, [activeQuiz, quizCompleted, tabSwitchCount]);
 
   // Update progress when quiz becomes active
   useEffect(() => {
@@ -491,6 +747,258 @@ export default function DashboardCourseViewPage() {
     }
   }, [activeQuiz, course?.finalExam?._id]);
 
+  // Anti-tampering protection system
+  useEffect(() => {
+    if (!activeQuiz || quizCompleted) return;
+
+    // Create a hash of critical functions to detect tampering
+    const originalFunctions = {
+      addEventListener: document.addEventListener,
+      removeEventListener: document.removeEventListener,
+      preventDefault: Event.prototype.preventDefault,
+      stopPropagation: Event.prototype.stopPropagation,
+    };
+
+    // Monitor for console usage
+    const consoleDetection = setInterval(() => {
+      const element = new Image();
+      Object.defineProperty(element, 'id', {
+        get: function() {
+          setTamperingDetected(true);
+          setFraudAttempts(prev => [...prev, `Console opened at ${new Date().toLocaleTimeString()}`]);
+          skipToNextQuestion();
+          clearInterval(consoleDetection);
+          return '';
+        }
+      });
+      console.log(element);
+    }, 1000);
+
+    // Detect DevTools by checking window size anomalies
+    const checkDevTools = setInterval(() => {
+      const widthThreshold = window.outerWidth - window.innerWidth > 160;
+      const heightThreshold = window.outerHeight - window.innerHeight > 160;
+      
+      if (widthThreshold || heightThreshold) {
+        setTamperingDetected(true);
+        setFraudAttempts(prev => [...prev, `DevTools detected via window size at ${new Date().toLocaleTimeString()}`]);
+        skipToNextQuestion();
+        clearInterval(checkDevTools);
+      }
+    }, 1000);
+
+    // Monitor for function tampering
+    const checkTampering = setInterval(() => {
+      if (
+        document.addEventListener !== originalFunctions.addEventListener ||
+        document.removeEventListener !== originalFunctions.removeEventListener ||
+        Event.prototype.preventDefault !== originalFunctions.preventDefault ||
+        Event.prototype.stopPropagation !== originalFunctions.stopPropagation
+      ) {
+        setTamperingDetected(true);
+        setFraudAttempts(prev => [...prev, `Function tampering detected at ${new Date().toLocaleTimeString()}`]);
+        setIsQuizLocked(true);
+        clearInterval(checkTampering);
+      }
+    }, 500);
+
+    // Detect debugger
+    const checkDebugger = setInterval(() => {
+      const start = performance.now();
+      debugger;
+      const end = performance.now();
+      if (end - start > 100) {
+        setTamperingDetected(true);
+        setFraudAttempts(prev => [...prev, `Debugger detected at ${new Date().toLocaleTimeString()}`]);
+        skipToNextQuestion();
+        clearInterval(checkDebugger);
+      }
+    }, 1000);
+
+    // Protect against script injection
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeName === 'SCRIPT') {
+            setTamperingDetected(true);
+            setFraudAttempts(prev => [...prev, `Script injection detected at ${new Date().toLocaleTimeString()}`]);
+            setIsQuizLocked(true);
+            (node as HTMLElement).remove();
+          }
+        });
+      });
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    // Detect rapid key pressing (possible automation)
+    let keyPressCount = 0;
+    let keyPressTimer: NodeJS.Timeout;
+    
+    const detectAutomation = (e: KeyboardEvent) => {
+      keyPressCount++;
+      clearTimeout(keyPressTimer);
+      
+      if (keyPressCount > 10) {
+        setTamperingDetected(true);
+        setFraudAttempts(prev => [...prev, `Automation/bot detected at ${new Date().toLocaleTimeString()}`]);
+        skipToNextQuestion();
+        keyPressCount = 0;
+      }
+      
+      keyPressTimer = setTimeout(() => {
+        keyPressCount = 0;
+      }, 1000);
+    };
+
+    document.addEventListener('keydown', detectAutomation);
+
+    // Cleanup
+    return () => {
+      clearInterval(consoleDetection);
+      clearInterval(checkDevTools);
+      clearInterval(checkTampering);
+      clearInterval(checkDebugger);
+      observer.disconnect();
+      document.removeEventListener('keydown', detectAutomation);
+    };
+  }, [activeQuiz, quizCompleted, currentQuestionIndex, selectedAnswers]);
+
+  // Protect window object from manipulation during quiz
+  useEffect(() => {
+    if (!activeQuiz || quizCompleted) return;
+
+    // Freeze important objects to prevent tampering
+    const protectedObjects = [
+      document.addEventListener,
+      document.removeEventListener,
+      window.addEventListener,
+      window.removeEventListener,
+      Event.prototype.preventDefault,
+      Event.prototype.stopPropagation,
+      Event.prototype.stopImmediatePropagation,
+    ];
+
+    // Store original toString methods
+    const originalToStrings = protectedObjects.map(obj => obj.toString);
+
+    // Override toString to hide our protection
+    protectedObjects.forEach((obj, index) => {
+      try {
+        Object.defineProperty(obj, 'toString', {
+          value: function() {
+            return originalToStrings[index].call(this);
+          },
+          writable: false,
+          configurable: false,
+        });
+      } catch (e) {
+        // Silently fail if already protected
+      }
+    });
+
+    // Detect attempts to access React DevTools
+    if (typeof window !== 'undefined') {
+      try {
+        // Only define if not already defined
+        if (!window.hasOwnProperty('__REACT_DEVTOOLS_GLOBAL_HOOK__')) {
+          Object.defineProperty(window, '__REACT_DEVTOOLS_GLOBAL_HOOK__', {
+            get() {
+              setTamperingDetected(true);
+              setFraudAttempts(prev => [...prev, `React DevTools detected at ${new Date().toLocaleTimeString()}`]);
+              skipToNextQuestion();
+              return undefined;
+            },
+            configurable: true,
+          });
+        } else {
+          // If it already exists, monitor it
+          const existingHook = (window as any).__REACT_DEVTOOLS_GLOBAL_HOOK__;
+          if (existingHook) {
+            setTamperingDetected(true);
+            setFraudAttempts(prev => [...prev, `React DevTools extension detected at ${new Date().toLocaleTimeString()}`]);
+          }
+        }
+      } catch (e) {
+        // Property already exists and is not configurable, silently continue
+        console.warn('Unable to override React DevTools hook');
+      }
+    }
+
+    // Prevent access to our anti-fraud variables via console
+    const protectVariables = () => {
+      const variablesToProtect = [
+        'setIsQuizLocked',
+        'setTabSwitchCount', 
+        'setShowFraudWarning',
+        'skipToNextQuestion',
+        'isQuizLocked',
+        'tabSwitchCount',
+      ];
+
+      variablesToProtect.forEach(varName => {
+        try {
+          Object.defineProperty(window, varName, {
+            get() {
+              setTamperingDetected(true);
+              setFraudAttempts(prev => [...prev, `Variable access attempt: ${varName} at ${new Date().toLocaleTimeString()}`]);
+              skipToNextQuestion();
+              return undefined;
+            },
+            set() {
+              setTamperingDetected(true);
+              setFraudAttempts(prev => [...prev, `Variable manipulation attempt: ${varName} at ${new Date().toLocaleTimeString()}`]);
+              setIsQuizLocked(true);
+              return false;
+            },
+            configurable: false,
+          });
+        } catch (e) {
+          // Already protected
+        }
+      });
+    };
+
+    protectVariables();
+
+    // Monitor for CSS injection that could disable our protections
+    const styleObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeName === 'STYLE' || (node.nodeName === 'LINK' && (node as HTMLLinkElement).rel === 'stylesheet')) {
+            const content = node.textContent || '';
+            // Check for attempts to re-enable text selection or hide warnings
+            if (
+              content.includes('user-select') ||
+              content.includes('pointer-events') ||
+              content.includes('display: none') ||
+              content.includes('visibility: hidden') ||
+              content.includes('opacity: 0')
+            ) {
+              setTamperingDetected(true);
+              setFraudAttempts(prev => [...prev, `CSS injection detected at ${new Date().toLocaleTimeString()}`]);
+              (node as HTMLElement).remove();
+              skipToNextQuestion();
+            }
+          }
+        });
+      });
+    });
+
+    styleObserver.observe(document.head, {
+      childList: true,
+      subtree: true,
+    });
+
+    return () => {
+      styleObserver.disconnect();
+    };
+
+  }, [activeQuiz, quizCompleted]);
+
   if (loading) {
     return (
       <StudentLayout
@@ -503,13 +1011,13 @@ export default function DashboardCourseViewPage() {
         onProfileClick={() => router.push('/dashboard/profile')}
         onSettingsClick={() => router.push('/dashboard/settings')}
         onLogout={handleLogout}
-        pageTitle="Chargement..."
+        pageTitle="Loading..."
         pageSubtitle=""
       >
         <div className="flex min-h-screen items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Chargement du cours...</p>
+            <p className="mt-4 text-gray-600">Loading course...</p>
           </div>
         </div>
       </StudentLayout>
@@ -533,7 +1041,7 @@ export default function DashboardCourseViewPage() {
         onProfileClick={() => router.push('/dashboard/profile')}
         onSettingsClick={() => router.push('/dashboard/settings')}
         onLogout={handleLogout}
-        pageTitle="Erreur"
+        pageTitle="Error"
         pageSubtitle=""
       >
         <div className="max-w-7xl mx-auto">
@@ -541,13 +1049,13 @@ export default function DashboardCourseViewPage() {
             <svg className="w-16 h-16 text-red-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <h3 className="text-lg font-semibold text-red-900 mb-2">Erreur</h3>
+            <h3 className="text-lg font-semibold text-red-900 mb-2">Error</h3>
             <p className="text-red-700 mb-4">{error || 'Cours non trouvé'}</p>
             <Link
               href="/dashboard/courses"
               className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
-              Retour à mes cours
+              Back to my courses
             </Link>
           </div>
         </div>
@@ -568,13 +1076,13 @@ export default function DashboardCourseViewPage() {
         onProfileClick={() => router.push('/dashboard/profile')}
         onSettingsClick={() => router.push('/dashboard/settings')}
         onLogout={handleLogout}
-        pageTitle="Chargement..."
+        pageTitle="Loading..."
         pageSubtitle=""
       >
         <div className="flex min-h-screen items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Chargement du cours...</p>
+            <p className="mt-4 text-gray-600">Loading course...</p>
           </div>
         </div>
       </StudentLayout>
@@ -633,12 +1141,12 @@ export default function DashboardCourseViewPage() {
         return fullUrl;
       } else {
         console.error('Error response:', data);
-        alert(data.error || 'Erreur lors de la génération du certificat');
+        alert(data.error || 'Error generating certificate');
         return null;
       }
     } catch (error) {
       console.error('Error generating certificate:', error);
-      alert('Erreur lors de la génération du certificat');
+      alert('Error generating certificate');
       return null;
     } finally {
       setGeneratingCertificate(false);
@@ -792,7 +1300,7 @@ export default function DashboardCourseViewPage() {
     
     } catch (error) {
       console.error('Error generating PDF:', error);
-      alert('Erreur lors de la génération du PDF');
+      alert('Error generating PDF');
     }
   };
 
@@ -876,7 +1384,7 @@ export default function DashboardCourseViewPage() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                Télécharger le certificat (PDF)
+                Download Certificate (PDF)
               </button>
               
               <button
@@ -889,7 +1397,7 @@ export default function DashboardCourseViewPage() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                 </svg>
-                Retour au tableau de bord
+                Back to Dashboard
               </button>
             </div>
           </div>
@@ -907,6 +1415,64 @@ export default function DashboardCourseViewPage() {
     <>
       <CertificateModal />
       
+      {/* Toast Notification */}
+      {showCopyToast && (
+        <div className="fixed top-4 right-4 z-50 animate-slideIn">
+          <div className="bg-gray-900 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3">
+            <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <span className="text-sm font-medium">Link copied to clipboard</span>
+          </div>
+        </div>
+      )}
+
+
+      {/* Quiz Locked Modal */}
+      {isQuizLocked && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-8 text-center">
+            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-12 h-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-red-600 mb-3">
+              {tamperingDetected ? '⚠️ Security Breach Detected' : '🚫 Quiz Locked'}
+            </h2>
+            <p className="text-gray-700 mb-4">
+              {tamperingDetected 
+                ? 'Your quiz has been locked due to tampering attempts or use of unauthorized tools.'
+                : 'Your quiz has been locked due to multiple suspicious activities.'}
+            </p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-left">
+              <h4 className="font-semibold text-red-800 mb-2">Detected Activities:</h4>
+              <ul className="text-sm text-red-700 space-y-1">
+                {fraudAttempts.slice(-5).map((attempt, index) => (
+                  <li key={index} className="flex items-start gap-2">
+                    <span className="text-red-500">•</span>
+                    <span>{attempt}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <p className="text-sm text-gray-600 mb-6">
+              Please contact your instructor to retake this quiz.
+            </p>
+            <button
+              onClick={() => {
+                setActiveQuiz(null);
+                setIsQuizLocked(false);
+                setShowFraudWarning(false);
+              }}
+              className="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-semibold transition-colors"
+            >
+              Exit Quiz
+            </button>
+          </div>
+        </div>
+      )}
+      
       <StudentLayout
         user={user}
         sidebarOpen={sidebarOpen}
@@ -915,25 +1481,26 @@ export default function DashboardCourseViewPage() {
         setShowProfileDropdown={setShowProfileDropdown}
         dropdownRef={dropdownRef}
         onProfileClick={() => router.push('/dashboard/profile')}
-      onSettingsClick={() => router.push('/dashboard/settings')}
-      onLogout={handleLogout}
-      pageTitle={course.title}
-      pageSubtitle="Continue your learning"
+        onSettingsClick={() => router.push('/dashboard/settings')}
+        onLogout={handleLogout}
+        hideSidebar={courseProgress >= 100}
+        pageTitle={course.title}
+        pageSubtitle="Continue your learning"
     >
       <div className="h-full bg-gray-50 flex overflow-hidden">
         {/* Mobile Overlay for Course Content Sidebar */}
-        {sidebarOpen && courseProgress < 100 && (
+        {sidebarOpen && (
           <div
             className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-30"
             onClick={() => setSidebarOpen(false)}
           ></div>
         )}
         
-        {/* Sidebar - Course Content - Hidden when course is 100% complete unless reviewing */}
-        {(courseProgress < 100 || isReviewingCourse) && (
+        {/* Sidebar - Course Content - Always visible */}
+        {true && (
           <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} fixed lg:sticky top-16 left-0 w-full sm:w-80 lg:w-80 bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-300 z-40`} style={{ height: 'calc(100vh - 4rem)' }}>
           <div className="lg:hidden p-3 sm:p-4 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">Contenu du cours</h2>
+            <h2 className="text-sm font-semibold text-gray-700">Course Content</h2>
             <button
               onClick={() => setSidebarOpen(false)}
               className="group relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 rounded-lg transition-all duration-300"
@@ -957,8 +1524,8 @@ export default function DashboardCourseViewPage() {
                     <div className="flex items-center gap-2 mb-2">
                       <div className="text-2xl">👀</div>
                       <div className="flex-1">
-                        <h3 className="text-xs font-bold text-blue-800">Mode Révision</h3>
-                        <p className="text-xs text-blue-700">Votre certification reste valide</p>
+                        <h3 className="text-xs font-bold text-blue-800">Review Mode</h3>
+                        <p className="text-xs text-blue-700">Your certification remains valid</p>
                       </div>
                     </div>
                     <button
@@ -995,7 +1562,7 @@ export default function DashboardCourseViewPage() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    Télécharger votre certificat
+                    Download your certificate
                   </button>
                 </div>
               )}
@@ -1003,7 +1570,7 @@ export default function DashboardCourseViewPage() {
 
             {/* Course Content */}
             <div className="space-y-2">
-              <h2 className="hidden lg:block text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Contenu du cours</h2>
+              <h2 className="hidden lg:block text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Course Content</h2>
               {course.modules && course.modules.length > 0 ? (
                 course.modules.map((module, moduleIndex) => (
                   <div key={module._id} className="mb-4">
@@ -1111,7 +1678,7 @@ export default function DashboardCourseViewPage() {
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-gray-500">Aucun module disponible</p>
+                <p className="text-sm text-gray-500">No modules available</p>
               )}
               
               {/* Final Exam */}
@@ -1209,7 +1776,7 @@ export default function DashboardCourseViewPage() {
                       {generatingCertificate ? (
                         <>
                           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                          Génération...
+                          Generating...
                         </>
                       ) : (
                         <>
@@ -1223,7 +1790,7 @@ export default function DashboardCourseViewPage() {
 
                     {certificateUrl && (
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
-                        <p className="text-xs text-blue-800 font-semibold mb-1">Lien de partage :</p>
+                        <p className="text-xs text-blue-800 font-semibold mb-1">Share link:</p>
                         <div className="flex gap-1">
                           <input
                             type="text"
@@ -1234,11 +1801,12 @@ export default function DashboardCourseViewPage() {
                           <button
                             onClick={() => {
                               navigator.clipboard.writeText(certificateUrl);
-                              alert('Lien copié !');
+                              setShowCopyToast(true);
+                              setTimeout(() => setShowCopyToast(false), 2000);
                             }}
-                            className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold"
+                            className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold transition-colors"
                           >
-                            Copier
+                            Copy
                           </button>
                         </div>
                       </div>
@@ -1290,7 +1858,8 @@ export default function DashboardCourseViewPage() {
                 </div>
               </div>
             </div>
-          ) : currentQuiz ? (
+          ) : (currentSection || currentQuiz) ? (
+            currentQuiz ? (
             <div className="h-full flex flex-col overflow-hidden bg-gray-50">
               {/* Quiz Header with Progress */}
               {currentQuiz.questions && currentQuiz.questions.length > 0 && currentQuestionIndex < currentQuiz.questions.length && (
@@ -1306,7 +1875,7 @@ export default function DashboardCourseViewPage() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                         </svg>
                       </button>
-                      <div className="flex-1 flex items-center justify-between">
+                      <div className="flex-1 flex items-center justify-between gap-2">
                         <div className="flex-1 max-w-md">
                           <div className="w-full bg-gray-200 rounded-full h-1">
                             <div 
@@ -1315,8 +1884,27 @@ export default function DashboardCourseViewPage() {
                             ></div>
                           </div>
                         </div>
-                        <div className="ml-2 text-xs font-medium text-gray-600">
-                          Question {currentQuestionIndex + 1} sur {currentQuiz.questions.length}
+                        <div className="flex items-center gap-2">
+                          <div className="text-xs font-medium text-gray-600">
+                            Question {currentQuestionIndex + 1} / {currentQuiz.questions.length}
+                          </div>
+                          {/* Security Status Indicator */}
+                          {tabSwitchCount > 0 && (
+                            <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                              isQuizLocked 
+                                ? 'bg-red-100 text-red-700' 
+                                : tabSwitchCount >= 5
+                                  ? 'bg-red-100 text-red-700' 
+                                  : tabSwitchCount >= 3 
+                                    ? 'bg-orange-100 text-orange-700' 
+                                    : 'bg-yellow-100 text-yellow-700'
+                            }`}>
+                              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                              </svg>
+                              {isQuizLocked ? 'LOCKED' : `⚠ ${tabSwitchCount}`}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1325,11 +1913,11 @@ export default function DashboardCourseViewPage() {
               )}
 
               {/* Quiz Content - One Question at a Time */}
-              <div className="flex-1 overflow-hidden bg-gray-50 flex items-center min-h-0">
+              <div className="flex-1 overflow-hidden bg-gray-50 flex items-center min-h-0 quiz-no-select">
                 {currentQuiz.questions && currentQuiz.questions.length > 0 ? (
                   <div className="max-w-4xl mx-auto w-full px-3 sm:px-4 h-full flex items-center min-h-0">
-                    {currentQuestionIndex < currentQuiz.questions.length ? (
-                      <div className="bg-white rounded-lg shadow-md border border-gray-200 p-3 sm:p-4 w-full max-h-full overflow-hidden flex flex-col">
+                    {!quizCompleted && currentQuestionIndex < currentQuiz.questions.length ? (
+                      <div className={`bg-white rounded-lg shadow-md p-3 sm:p-4 w-full max-h-full overflow-hidden flex flex-col transition-all duration-300 ${showRedBorder ? 'border-4 border-red-600 animate-pulse' : 'border border-gray-200'}`}>
                         {(() => {
                           const currentQuestion = currentQuiz.questions![currentQuestionIndex];
                           return (
@@ -1355,14 +1943,14 @@ export default function DashboardCourseViewPage() {
                                           key={answer._id}
                                           type="button"
                                           onClick={() => {
-                                            if (!showResults) {
+                                            if (!showResults && !isQuizLocked && !isBlocked) {
                                               setSelectedAnswers({
                                                 ...selectedAnswers,
                                                 [questionId]: answer._id
                                               });
                                             }
                                           }}
-                                          disabled={showResults}
+                                          disabled={showResults || isQuizLocked || isBlocked}
                                           className={`w-full text-left p-2 sm:p-2.5 rounded-lg border-2 transition-all flex-shrink-0 ${
                                             showCorrect
                                               ? 'bg-green-50 border-green-500 text-green-900 shadow-sm'
@@ -1371,7 +1959,7 @@ export default function DashboardCourseViewPage() {
                                                 : isSelected
                                                   ? 'bg-blue-50 border-blue-500 text-blue-900 shadow-sm'
                                                   : 'bg-gray-50 border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-100 hover:shadow-sm'
-                                          } ${showResults ? 'cursor-default' : 'cursor-pointer'}`}
+                                          } ${showResults || isQuizLocked || isBlocked ? 'cursor-default' : 'cursor-pointer'} ${isQuizLocked || isBlocked ? 'opacity-50' : ''}`}
                                         >
                                           <div className="flex items-center gap-2">
                                             <div className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
@@ -1401,7 +1989,7 @@ export default function DashboardCourseViewPage() {
                                   </div>
                                 ) : (
                                   <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg flex-shrink-0">
-                                    <p className="text-yellow-800 text-xs">Aucune réponse disponible pour cette question.</p>
+                                    <p className="text-yellow-800 text-xs">No answers available for this question.</p>
                                   </div>
                                 )}
                                 
@@ -1426,7 +2014,7 @@ export default function DashboardCourseViewPage() {
                                         a => a._id === selectedAnswers[currentQuestion._id]
                                       )?.isCorrect
                                         ? '✓ Correct!'
-                                        : '✗ Incorrect. La bonne réponse est mise en évidence en vert.'}
+                                        : '✗ Incorrect. The correct answer is highlighted in green.'}
                                     </p>
                                   </div>
                                 )}
@@ -1436,46 +2024,173 @@ export default function DashboardCourseViewPage() {
                         })()}
                       </div>
                     ) : (
-                      <div className="bg-white rounded-lg shadow-md border border-gray-200 p-3 sm:p-4 text-center h-full flex flex-col items-center justify-center">
-                        <div className={`inline-flex items-center justify-center w-12 h-12 rounded-full mb-2 ${
-                          quizScore !== null && quizScore >= (currentQuiz.passingScore || 70) 
-                            ? 'bg-green-100' 
-                            : 'bg-red-100'
-                        }`}>
-                          {quizScore !== null && quizScore >= (currentQuiz.passingScore || 70) ? (
-                            <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                          ) : (
-                            <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          )}
-                        </div>
-                        <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-1">Résultats du Quiz</h2>
-                        <p className={`text-3xl sm:text-4xl font-bold mb-2 ${
-                          quizScore !== null && quizScore >= (currentQuiz.passingScore || 70) ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          {quizScore}%
-                        </p>
-                        <p className={`text-base sm:text-lg font-semibold mb-2 ${
-                          quizScore !== null && quizScore >= (currentQuiz.passingScore || 70) ? 'text-green-700' : 'text-red-700'
-                        }`}>
-                          {quizScore !== null && quizScore >= (currentQuiz.passingScore || 70) ? '✓ Réussi!' : '✗ Échoué'}
-                        </p>
-                        {quizScore !== null && quizScore < (currentQuiz.passingScore || 70) && (
-                          <div className="bg-red-50 border-2 border-red-200 rounded-lg p-2 max-w-md mx-auto">
-                            <p className="text-xs text-red-700 font-medium">
-                              Vous devez obtenir au moins {currentQuiz.passingScore || 70}% pour continuer.
-                            </p>
+                      <div className="h-full w-full bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden p-1 sm:p-1.5 md:p-2">
+                        <div className="h-full w-full">
+                          {/* Main Result Card - Full Screen */}
+                          <div className="h-full w-full bg-white rounded-md sm:rounded-lg shadow-2xl overflow-hidden flex flex-col">
+                            {/* Header Section */}
+                            <div className={`flex-shrink-0 py-1 sm:py-1.5 md:py-2 text-center ${
+                              quizScore !== null && quizScore >= (currentQuiz.passingScore || 70)
+                                ? 'bg-gradient-to-r from-green-500 to-emerald-600'
+                                : 'bg-gradient-to-r from-red-500 to-rose-600'
+                            }`}>
+                              <div className="inline-flex items-center justify-center w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 rounded-full bg-white/20 backdrop-blur-sm mb-0.5">
+                                {quizScore !== null && quizScore >= (currentQuiz.passingScore || 70) ? (
+                                  <svg className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                )}
+                              </div>
+                              <h2 className="text-xs sm:text-sm md:text-base font-bold text-white mb-0.5">Quiz Results</h2>
+                              <p className="text-white/90 text-xs px-2 line-clamp-1">
+                                {activeQuiz && 'type' in activeQuiz && activeQuiz.type === 'final' 
+                                  ? 'Final Exam - Formation en C'
+                                  : activeQuiz && 'moduleId' in activeQuiz
+                                    ? (() => {
+                                        const module = course?.modules?.find(m => m._id === (activeQuiz as any).moduleId);
+                                        return module?.title || 'Quiz';
+                                      })()
+                                    : 'Quiz Completed'
+                                }
+                              </p>
+                            </div>
+
+                            {/* Main Content Area - Flex 1 */}
+                            <div className="flex-1 flex flex-col items-center justify-center p-1 sm:p-1.5 md:p-2 min-h-0 overflow-hidden">
+                              {/* Score Display */}
+                              <div className="text-center mb-0.5 sm:mb-1 md:mb-1.5">
+                                <p className="text-gray-500 text-xs mb-0.5">Your Score</p>
+                                <p className={`text-2xl sm:text-3xl md:text-4xl lg:text-4xl xl:text-5xl font-bold mb-0.5 ${
+                                  quizScore !== null && quizScore >= (currentQuiz.passingScore || 70)
+                                    ? 'text-green-600'
+                                    : 'text-red-600'
+                                }`}>
+                                  {quizScore}<span className="text-base sm:text-lg md:text-xl lg:text-xl xl:text-2xl">%</span>
+                                </p>
+                                <div className={`inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 md:px-2.5 py-0.5 rounded-full font-bold text-xs ${
+                                  quizScore !== null && quizScore >= (currentQuiz.passingScore || 70)
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-red-100 text-red-700'
+                                }`}>
+                                  {quizScore !== null && quizScore >= (currentQuiz.passingScore || 70) ? (
+                                    <>
+                                      <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                      </svg>
+                                      Passed
+                                    </>
+                                  ) : (
+                                    <>
+                                      <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                      </svg>
+                                      Failed
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Statistics Grid */}
+                              <div className="w-full max-w-3xl grid grid-cols-4 gap-0.5 sm:gap-1 md:gap-1.5 mb-0.5 sm:mb-1 md:mb-1.5">
+                                <div className="bg-blue-50 rounded-sm sm:rounded-md p-0.5 sm:p-1 md:p-1.5 text-center border border-blue-200">
+                                  <div className="text-base sm:text-lg md:text-xl lg:text-xl xl:text-2xl font-bold text-blue-600 mb-0">
+                                    {currentQuiz.questions?.length || 0}
+                                  </div>
+                                  <div className="text-xs text-gray-700 font-semibold">Total</div>
+                                </div>
+                                <div className="bg-green-50 rounded-sm sm:rounded-md p-0.5 sm:p-1 md:p-1.5 text-center border border-green-200">
+                                  <div className="text-base sm:text-lg md:text-xl lg:text-xl xl:text-2xl font-bold text-green-600 mb-0">
+                                    {Math.round(((quizScore || 0) / 100) * (currentQuiz.questions?.length || 0))}
+                                  </div>
+                                  <div className="text-xs text-gray-700 font-semibold">Correct</div>
+                                </div>
+                                <div className="bg-red-50 rounded-sm sm:rounded-md p-0.5 sm:p-1 md:p-1.5 text-center border border-red-200">
+                                  <div className="text-base sm:text-lg md:text-xl lg:text-xl xl:text-2xl font-bold text-red-600 mb-0">
+                                    {(currentQuiz.questions?.length || 0) - Math.round(((quizScore || 0) / 100) * (currentQuiz.questions?.length || 0))}
+                                  </div>
+                                  <div className="text-xs text-gray-700 font-semibold">Wrong</div>
+                                </div>
+                                <div className="bg-purple-50 rounded-sm sm:rounded-md p-0.5 sm:p-1 md:p-1.5 text-center border border-purple-200">
+                                  <div className="text-base sm:text-lg md:text-xl lg:text-xl xl:text-2xl font-bold text-purple-600 mb-0">
+                                    {currentQuiz.passingScore || 70}%
+                                  </div>
+                                  <div className="text-xs text-gray-700 font-semibold">Required</div>
+                                </div>
+                              </div>
+
+                              {/* Messages */}
+                              <div className="w-full max-w-2xl space-y-0.5 sm:space-y-1 md:space-y-1.5">
+                                {/* Success/Fail Message */}
+                                <div className={`rounded-sm sm:rounded-md p-1 sm:p-1.5 md:p-2 ${
+                                  quizScore !== null && quizScore >= (currentQuiz.passingScore || 70)
+                                    ? 'bg-green-50 border-2 border-green-300'
+                                    : 'bg-red-50 border-2 border-red-300'
+                                }`}>
+                                  <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2">
+                                    <svg className={`w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0 ${
+                                      quizScore !== null && quizScore >= (currentQuiz.passingScore || 70)
+                                        ? 'text-green-600'
+                                        : 'text-red-600'
+                                    }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={
+                                        quizScore !== null && quizScore >= (currentQuiz.passingScore || 70)
+                                          ? "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                          : "M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                      } />
+                                    </svg>
+                                    <div className="flex-1 min-w-0">
+                                      <h3 className={`font-bold text-xs mb-0 ${
+                                        quizScore !== null && quizScore >= (currentQuiz.passingScore || 70)
+                                          ? 'text-green-900'
+                                          : 'text-red-900'
+                                      }`}>
+                                        {quizScore !== null && quizScore >= (currentQuiz.passingScore || 70)
+                                          ? 'Congratulations! 🎉'
+                                          : 'Keep Trying! 💪'}
+                                      </h3>
+                                      <p className={`text-xs ${
+                                        quizScore !== null && quizScore >= (currentQuiz.passingScore || 70)
+                                          ? 'text-green-700'
+                                          : 'text-red-700'
+                                      }`}>
+                                        {quizScore !== null && quizScore >= (currentQuiz.passingScore || 70)
+                                          ? `You passed with ${quizScore}%.`
+                                          : `You need ${currentQuiz.passingScore || 70}% to pass.`}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Fraud Alert */}
+                                {skippedQuestions.length > 0 && (
+                                  <div className="bg-orange-50 border border-orange-300 rounded-sm sm:rounded-md p-1 sm:p-1.5 md:p-2">
+                                    <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2">
+                                      <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                      </svg>
+                                      <div className="flex-1 min-w-0">
+                                        <h3 className="font-bold text-xs text-orange-900 mb-0">Fraud Detection ⚠️</h3>
+                                        <p className="text-xs text-orange-700">
+                                          {skippedQuestions.length} question(s) skipped.
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        )}
+                        </div>
                       </div>
                     )}
                   </div>
                 ) : (
                   <div className="text-center py-12">
-                    <p className="text-gray-600">Aucune question disponible.</p>
+                    <p className="text-gray-600">No questions available.</p>
                   </div>
                 )}
               </div>
@@ -1489,19 +2204,28 @@ export default function DashboardCourseViewPage() {
                         <button
                           type="button"
                           onClick={() => {
+                            if (isQuizLocked || isBlocked) return;
                             const questionId = currentQuiz.questions![currentQuestionIndex]._id;
                             if (selectedAnswers[questionId]) {
-                              setShowResults(true);
+                              // If it's the last question, finish the quiz immediately
+                              if (currentQuestionIndex === currentQuiz.questions!.length - 1) {
+                                const score = calculateQuizScore(currentQuiz);
+                                setQuizScore(score);
+                                setQuizCompleted(true);
+                              } else {
+                                // Otherwise just show the result
+                                setShowResults(true);
+                              }
                             }
                           }}
-                          disabled={!selectedAnswers[currentQuiz.questions![currentQuestionIndex]._id]}
+                          disabled={!selectedAnswers[currentQuiz.questions![currentQuestionIndex]._id] || isQuizLocked || isBlocked}
                           className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-semibold transition-all shadow-md hover:shadow-lg ${
-                            !selectedAnswers[currentQuiz.questions![currentQuestionIndex]._id]
+                            !selectedAnswers[currentQuiz.questions![currentQuestionIndex]._id] || isQuizLocked || isBlocked
                               ? 'opacity-50 cursor-not-allowed'
                               : 'hover:from-green-700 hover:to-green-800 cursor-pointer transform hover:scale-105'
                           }`}
                         >
-                          {currentQuestionIndex === currentQuiz.questions!.length - 1 ? 'Terminer le Quiz' : 'Vérifier la réponse'}
+                          {currentQuestionIndex === currentQuiz.questions!.length - 1 ? 'Finish Quiz' : 'Check Answer'}
                         </button>
                       </div>
                     )}
@@ -1529,7 +2253,7 @@ export default function DashboardCourseViewPage() {
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                           </svg>
-                          <span>Précédent</span>
+                          <span>Previous</span>
                         </button>
                         
                         <div className="text-xs sm:text-sm text-gray-600 font-medium px-2">
@@ -1555,7 +2279,7 @@ export default function DashboardCourseViewPage() {
                           className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg text-xs sm:text-sm font-semibold transition-all shadow-md hover:shadow-lg flex items-center gap-1.5 cursor-pointer transform hover:scale-105"
                           style={{ pointerEvents: 'auto' }}
                         >
-                          <span>{currentQuestionIndex < currentQuiz.questions!.length - 1 ? 'Suivant' : 'Terminer'}</span>
+                          <span>{currentQuestionIndex < currentQuiz.questions!.length - 1 ? 'Next' : 'Finish'}</span>
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                           </svg>
@@ -1584,7 +2308,7 @@ export default function DashboardCourseViewPage() {
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                           </svg>
-                          <span>Précédent</span>
+                          <span>Previous</span>
                         </button>
                         
                         <div className="text-xs sm:text-sm text-gray-600 font-medium px-2">
@@ -1670,7 +2394,7 @@ export default function DashboardCourseViewPage() {
                             className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg text-xs sm:text-sm font-semibold transition-all shadow-md hover:shadow-lg flex items-center gap-1.5 cursor-pointer transform hover:scale-105"
                             style={{ pointerEvents: 'auto' }}
                           >
-                            <span>Continuer</span>
+                            <span>Continue</span>
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                             </svg>
@@ -1700,7 +2424,7 @@ export default function DashboardCourseViewPage() {
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                             </svg>
-                            <span className="hidden sm:inline">Retour à l'apprentissage</span>
+                            <span className="hidden sm:inline">Back to learning</span>
                           </button>
                         )}
                       </div>
@@ -1725,7 +2449,7 @@ export default function DashboardCourseViewPage() {
                   </div>
                 </button>
                 <h2 className="text-sm font-semibold text-gray-700 flex-1 text-center">
-                  {currentSection.title || 'Contenu du cours'}
+                  {currentSection.title || 'Course Content'}
                 </h2>
                 <div className="w-10"></div> {/* Spacer for centering */}
               </div>
@@ -1762,7 +2486,7 @@ export default function DashboardCourseViewPage() {
                               {currentSection.fileName || 'Document'}
                             </h3>
                             <p className="text-gray-600 mb-6">
-                              Ce type de fichier ne peut pas être prévisualisé directement dans le navigateur.
+                              This file type cannot be previewed directly in the browser.
                             </p>
                             <a
                               href={getFileUrl(currentSection)}
@@ -1774,7 +2498,7 @@ export default function DashboardCourseViewPage() {
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
-                              Télécharger pour voir
+                              Download to view
                             </a>
                           </div>
                         </div>
@@ -1798,7 +2522,7 @@ export default function DashboardCourseViewPage() {
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
-                              Télécharger le fichier
+                              Download file
                             </a>
                           </div>
                         </div>
@@ -1845,10 +2569,10 @@ export default function DashboardCourseViewPage() {
                       <div className="text-center p-8">
                         <div className="text-6xl mb-4">📚</div>
                         <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                          Aucune section sélectionnée
+                          No section selected
                         </h3>
                         <p className="text-gray-600">
-                          Veuillez sélectionner une section dans le menu de gauche.
+                          Please select a section from the left menu.
                         </p>
                       </div>
                     </div>
@@ -1912,7 +2636,7 @@ export default function DashboardCourseViewPage() {
                       <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                       </svg>
-                      <span className="hidden sm:inline">Précédent</span>
+                      <span className="hidden sm:inline">Previous</span>
                     </button>
                     <button
                       type="button"
@@ -1995,7 +2719,7 @@ export default function DashboardCourseViewPage() {
                       className="px-3 sm:px-4 lg:px-6 py-2 sm:py-2.5 lg:py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg text-xs sm:text-sm font-semibold transition-all shadow-md hover:shadow-lg flex items-center gap-1 sm:gap-2 cursor-pointer relative z-50"
                       style={{ pointerEvents: 'auto' }}
                     >
-                      <span className="hidden sm:inline">Suivant</span>
+                      <span className="hidden sm:inline">Next</span>
                       <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
@@ -2004,20 +2728,57 @@ export default function DashboardCourseViewPage() {
                 </div>
               )}
             </div>
-          ) : (
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-              <div className="text-center">
-                <div className="w-24 h-24 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <svg className="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                  </svg>
-                </div>
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2 px-4">Bienvenue dans {course.title}</h2>
-                <p className="text-sm sm:text-base text-gray-600 mb-6 px-4">{course.description}</p>
-                <p className="text-xs sm:text-sm text-gray-500 px-4">Sélectionnez une leçon dans la barre latérale pour commencer l'apprentissage</p>
+            ) : activeSection && currentSection ? (
+              /* Display Active Section */
+              <div className="h-full bg-white overflow-hidden">
+                {(currentSection as any).type === 'file' && (currentSection as any).fileType === 'pdf' && (
+                  <iframe
+                    src={`/uploads/${(currentSection as any).content}`}
+                    className="w-full h-full"
+                    title={(currentSection as any).title}
+                  />
+                )}
+                {(currentSection as any).type === 'file' && (currentSection as any).fileType === 'image' && (
+                  <div className="h-full flex items-center justify-center bg-gray-900 p-4">
+                    <img
+                      src={`/uploads/${(currentSection as any).content}`}
+                      alt={(currentSection as any).title}
+                      className="max-w-full max-h-full object-contain"
+                    />
+                  </div>
+                )}
+                {(currentSection as any).type === 'youtube' && (currentSection as any).content && (
+                  <div className="h-full w-full bg-black flex items-start justify-center">
+                    <div
+                      className="relative w-full"
+                      style={{
+                        paddingBottom: '80px',
+                        maxWidth: 'min(100%, calc((100vh - 180px) * 16/9))',
+                        maxHeight: 'calc(100% - 80px)',
+                        aspectRatio: '16/9',
+                      }}
+                    >
+                      <iframe
+                        src={`https://www.youtube.com/embed/${(currentSection as any).content.includes('watch?v=') ? (currentSection as any).content.split('watch?v=')[1].split('&')[0] : (currentSection as any).content.split('/').pop()}`}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        className="absolute top-0 left-0"
+                        style={{ width: '100%', height: '100%' }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            ) : (
+              /* Loading or fallback */
+              <div className="h-full flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading course content...</p>
+                </div>
+              </div>
+            )
+          ) : null}
         </main>
       </div>
 
