@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchApi, getFileUrl } from '@/lib/api-client';
 
@@ -30,7 +30,7 @@ interface Category {
   name: string;
 }
 
-export default function CoursesPage() {
+function CoursesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -220,7 +220,7 @@ export default function CoursesPage() {
               type="text"
               placeholder="Search courses..."
               value={searchQuery}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+              onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
               className="w-full px-4 py-3 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
             <svg
@@ -298,7 +298,7 @@ export default function CoursesPage() {
                           src={getFileUrl(course.thumbnail)}
                           alt={course.title}
                           className="max-w-full max-h-full object-contain"
-                          onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+                          onError={(e) => {
                             (e.target as HTMLImageElement).style.display = 'none';
                           }}
                         />
@@ -433,6 +433,21 @@ export default function CoursesPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function CoursesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading courses...</p>
+        </div>
+      </div>
+    }>
+      <CoursesContent />
+    </Suspense>
   );
 }
 
