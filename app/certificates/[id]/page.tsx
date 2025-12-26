@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { fetchApi } from '@/lib/api-client';
 
 interface Certificate {
   _id: string;
@@ -25,7 +26,7 @@ export default function PublicCertificatePage() {
   useEffect(() => {
     const fetchCertificate = async () => {
       try {
-        const res = await fetch(`/api/certificates/${certificateId}`);
+        const res = await fetchApi(`/api/certificates/${certificateId}`);
         const data = await res.json();
 
         if (res.ok) {

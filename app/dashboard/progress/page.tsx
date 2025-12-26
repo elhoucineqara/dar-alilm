@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { fetchApi, getFileUrl } from '../../../lib/api-client';
 import StudentLayout from '../../components/StudentLayout';
 
 interface User {
@@ -69,11 +70,7 @@ export default function ProgressPage() {
     }
 
     // Fetch user info
-    fetch('/api/auth/me', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
+    fetchApi('/api/auth/me')
       .then((res) => {
         if (!res.ok) {
           localStorage.removeItem('token');
@@ -107,11 +104,7 @@ export default function ProgressPage() {
 
   const fetchCourses = async (token: string) => {
     try {
-      const res = await fetch('/api/student/courses', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetchApi('/api/student/courses');
       if (res.ok) {
         const data = await res.json();
         setCourses(data.courses || []);
@@ -129,11 +122,7 @@ export default function ProgressPage() {
   const fetchCourseProgress = async (courseId: string, token: string) => {
     try {
       setLoadingProgress(true);
-      const res = await fetch(`/api/student/progress?courseId=${courseId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetchApi(`/api/student/progress?courseId=${courseId}`);
       if (res.ok) {
         const data = await res.json();
         setCourseProgress(data);
@@ -225,7 +214,7 @@ export default function ProgressPage() {
                       <div className="flex items-center gap-3">
                         {item.course.thumbnail ? (
                           <img
-                            src={item.course.thumbnail}
+                            src={getFileUrl(item.course.thumbnail)}
                             alt={item.course.title}
                             className="w-12 h-12 rounded-lg object-cover"
                           />
@@ -268,7 +257,7 @@ export default function ProgressPage() {
                   <div className="flex items-start gap-4">
                     {courseProgress.course.thumbnail ? (
                       <img
-                        src={courseProgress.course.thumbnail}
+                        src={getFileUrl(courseProgress.course.thumbnail)}
                         alt={courseProgress.course.title}
                         className="w-24 h-24 rounded-lg object-cover"
                       />
@@ -463,7 +452,7 @@ export default function ProgressPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Sélectionnez un cours</h3>
-                <p className="text-gray-600">Choisissez un cours dans la liste pour voir votre progression détaillée</p>
+                <p className="text-gray-600">Choose a course from the list to view your detailed progress</p>
               </div>
             )}
           </div>

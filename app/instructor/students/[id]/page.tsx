@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import InstructorLayout from '@/app/components/InstructorLayout';
+import { fetchApi } from '../../../../lib/api-client';
 import Link from 'next/link';
 
 interface StudentDetails {
@@ -42,11 +42,7 @@ export default function StudentDetailsPage() {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const res = await fetch(`/api/instructor/students/${studentId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetchApi(`/api/instructor/students/${studentId}`);
 
       if (res.ok) {
         const data = await res.json();
@@ -96,18 +92,15 @@ export default function StudentDetailsPage() {
 
   if (loading) {
     return (
-      <InstructorLayout>
-        <div className="flex justify-center items-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </div>
-      </InstructorLayout>
+      <div className="flex justify-center items-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
     );
   }
 
   if (!student) {
     return (
-      <InstructorLayout>
-        <div className="text-center py-12">
+      <div className="text-center py-12">
           <div className="text-6xl mb-4">❌</div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Student not found</h2>
           <Link
@@ -117,7 +110,6 @@ export default function StudentDetailsPage() {
             Back to students list
           </Link>
         </div>
-      </InstructorLayout>
     );
   }
 
@@ -127,8 +119,7 @@ export default function StudentDetailsPage() {
       : 0;
 
   return (
-    <InstructorLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
           <button
@@ -256,7 +247,6 @@ export default function StudentDetailsPage() {
           )}
         </div>
       </div>
-    </InstructorLayout>
   );
 }
 

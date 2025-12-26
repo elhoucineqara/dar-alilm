@@ -3,42 +3,29 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { fetchApi } from '@/lib/api-client';
 
 export default function RegisterPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
-    email: '',
-    password: '',
     firstName: '',
     lastName: '',
+    email: '',
+    password: '',
     role: 'student' as 'student' | 'instructor' | 'admin',
   });
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
-    
-    if (token && userStr) {
-      try {
-        const user = JSON.parse(userStr);
-        // Redirect based on role
-        if (user.role === 'admin') {
-          router.push('/admin');
-        } else if (user.role === 'instructor') {
-          router.push('/instructor');
-        } else {
-          router.push('/dashboard');
-        }
-        return;
-      } catch (e) {
-        console.error('Error parsing user data:', e);
-      }
+    if (token) {
+      router.push('/dashboard');
+    } else {
+      setCheckingAuth(false);
     }
-    setCheckingAuth(false);
   }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -47,11 +34,8 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/auth/register', {
+      const response = await fetchApi('/api/auth/register', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(formData),
       });
 

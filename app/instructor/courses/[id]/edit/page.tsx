@@ -1,18 +1,11 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useRouter, usePathname, useParams } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { fetchApi, getFileUrl as getBackendFileUrl } from '@/lib/api-client';
 import ConfirmDialog from '../../../../components/ConfirmDialog';
 import { useConfirmDialog } from '../../../../hooks/useConfirmDialog';
-
-interface User {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  role: string;
-}
 
 interface Category {
   _id: string;
@@ -86,22 +79,17 @@ interface QuizWithQuestions extends Omit<Quiz, 'questions'> {
 function getFileUrl(section: Section | null | undefined): string | undefined {
   if (!section) return undefined;
   if (section.fileId) {
-    return `/api/files/${section.fileId}`;
+    return getBackendFileUrl(`/api/files/${section.fileId}`);
   }
   return section.fileUrl;
 }
 
 export default function EditCoursePage() {
   const router = useRouter();
-  const pathname = usePathname();
   const params = useParams();
   const courseId = params.id as string;
-  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [course, setCourse] = useState<Course | null>(null);
-  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const questionFormRef = useRef<HTMLDivElement>(null);
   const questionsListRef = useRef<{ [moduleId: string]: HTMLDivElement | null }>({});
   const [activeTab, setActiveTab] = useState<'modules' | 'final-exam'>('modules');
@@ -165,11 +153,7 @@ export default function EditCoursePage() {
       return;
     }
 
-    fetch('/api/auth/me', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
+    fetchApi('/api/auth/me')
       .then((res) => {
         if (!res.ok) {
           localStorage.removeItem('token');
@@ -185,7 +169,6 @@ export default function EditCoursePage() {
             router.push('/dashboard');
             return;
           }
-          setUser(data.user);
           fetchCourse(token);
         }
         setLoading(false);
@@ -204,11 +187,7 @@ export default function EditCoursePage() {
         return;
       }
       
-      const res = await fetch(`/api/instructor/courses/${courseId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetchApi(`/api/instructor/courses/${courseId}`);
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
@@ -246,9 +225,7 @@ export default function EditCoursePage() {
         // If finalExam is a string (ObjectId), fetch full details
         if (typeof data.course.finalExam === 'string') {
           try {
-            const examRes = await fetch(`/api/instructor/courses/${courseId}/final-exam`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
+            const examRes = await fetchApi(`/api/instructor/courses/${courseId}/final-exam`);
             if (examRes.ok) {
               const examData = await examRes.json();
               if (examData.quiz) {
@@ -268,12 +245,7 @@ export default function EditCoursePage() {
 
   const fetchFinalExamQuestions = async (finalExamId: string) => {
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`/api/instructor/quizzes/${finalExamId}/questions`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetchApi(`/api/instructor/quizzes/${finalExamId}/questions`);
       if (res.ok) {
         const data = await res.json();
         setFinalExamQuestions(data.questions || []);
@@ -283,34 +255,6 @@ export default function EditCoursePage() {
     }
   };
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowProfileDropdown(false);
-      }
-    };
-
-    if (showProfileDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showProfileDropdown]);
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/login');
-  };
-
-  const handleSettings = () => {
-    setShowProfileDropdown(false);
-    router.push('/instructor/settings');
-  };
-
   const handleAddModule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newModuleTitle.trim()) return;
@@ -318,12 +262,8 @@ export default function EditCoursePage() {
     setAddingModule(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`/api/instructor/courses/${courseId}/modules`, {
+      const res = await fetchApi(`/api/instructor/courses/${courseId}/modules`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({ 
           title: newModuleTitle.trim(),
           description: newModuleDescription.trim() || undefined,
@@ -383,7 +323,7 @@ export default function EditCoursePage() {
         const uploadFormData = new FormData();
         uploadFormData.append('file', newSectionFile);
 
-        const uploadRes = await fetch('/api/instructor/upload', {
+        const uploadRes = await fetchApi('/api/instructor/upload', {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -415,12 +355,8 @@ export default function EditCoursePage() {
         setUploadingFile(false);
       }
 
-      const res = await fetch(`/api/instructor/sections/${sectionId}`, {
+      const res = await fetchApi(`/api/instructor/sections/${sectionId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({ 
           title: newSectionTitle.trim(),
           description: newSectionDescription.trim() || undefined,
@@ -472,11 +408,8 @@ export default function EditCoursePage() {
     setDeletingSection(sectionId);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`/api/instructor/sections/${sectionId}`, {
+      const res = await fetchApi(`/api/instructor/sections/${sectionId}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
       });
 
       if (res.ok) {
@@ -499,12 +432,8 @@ export default function EditCoursePage() {
     setCreatingQuiz(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`/api/instructor/modules/${moduleId}/quiz`, {
+      const res = await fetchApi(`/api/instructor/quizzes/module/${moduleId}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           title: quizTitle.trim(),
           description: quizDescription.trim() || undefined,
@@ -539,12 +468,7 @@ export default function EditCoursePage() {
 
   const fetchQuizQuestions = async (quizId: string) => {
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`/api/instructor/quizzes/${quizId}/questions`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetchApi(`/api/instructor/quizzes/${quizId}/questions`);
       if (res.ok) {
         const data = await res.json();
         setQuizQuestions(prev => ({ ...prev, [quizId]: data.questions || [] }));
@@ -575,12 +499,8 @@ export default function EditCoursePage() {
     setCreatingFinalExam(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`/api/instructor/courses/${courseId}/final-exam`, {
+      const res = await fetchApi(`/api/instructor/quizzes/course/${courseId}/final-exam`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           title: course?.title ? `Final Exam - ${course.title}` : 'Final Exam',
           description: undefined,
@@ -642,11 +562,8 @@ export default function EditCoursePage() {
     setDeletingFinalExam(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`/api/instructor/courses/${courseId}/final-exam`, {
+      const res = await fetchApi(`/api/instructor/quizzes/course/${courseId}/final-exam`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
       });
 
       if (res.ok) {
@@ -684,12 +601,8 @@ export default function EditCoursePage() {
       const token = localStorage.getItem('token');
       
       // Create question
-      const questionRes = await fetch(`/api/instructor/quizzes/${finalExamId}/questions`, {
+      const questionRes = await fetchApi(`/api/instructor/quizzes/${finalExamId}/questions`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           question: questionText.trim(),
           type: questionType,
@@ -708,7 +621,7 @@ export default function EditCoursePage() {
 
       // Create answers
       if (questionType === 'true_false') {
-        await fetch(`/api/instructor/questions/${newQuestionId}/answers`, {
+        await fetchApi(`/api/instructor/questions/${newQuestionId}/answers`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -721,7 +634,7 @@ export default function EditCoursePage() {
           }),
         });
 
-        await fetch(`/api/instructor/questions/${newQuestionId}/answers`, {
+        await fetchApi(`/api/instructor/questions/${newQuestionId}/answers`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -735,12 +648,8 @@ export default function EditCoursePage() {
         });
       } else {
         for (let i = 0; i < questionAnswers.length; i++) {
-          await fetch(`/api/instructor/questions/${newQuestionId}/answers`, {
+          await fetchApi(`/api/instructor/quizzes/question/${newQuestionId}/answers`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
             body: JSON.stringify({
               answer: questionAnswers[i].text.trim(),
               isCorrect: questionAnswers[i].isCorrect,
@@ -785,7 +694,7 @@ export default function EditCoursePage() {
       const token = localStorage.getItem('token');
 
       // Update question
-      const questionRes = await fetch(`/api/instructor/questions/${questionId}`, {
+      const questionRes = await fetchApi(`/api/instructor/questions/${questionId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -805,30 +714,23 @@ export default function EditCoursePage() {
       }
 
       // Fetch existing question to get answers
-      const existingQuestionRes = await fetch(`/api/instructor/questions/${questionId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const existingQuestionRes = await fetchApi(`/api/instructor/quizzes/question/${questionId}`);
       const existingQuestionData = await existingQuestionRes.json();
       const existingQuestion = existingQuestionData.question;
 
       // Delete all existing answers
       if (existingQuestion.answers && existingQuestion.answers.length > 0) {
         for (const answer of existingQuestion.answers) {
-          await fetch(`/api/instructor/answers/${answer._id}`, {
+          await fetchApi(`/api/instructor/quizzes/answer/${answer._id}`, {
             method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` },
           });
         }
       }
 
       // Create new answers
       if (questionType === 'true_false') {
-        await fetch(`/api/instructor/questions/${questionId}/answers`, {
+        await fetchApi(`/api/instructor/quizzes/question/${questionId}/answers`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify({
             answer: 'True',
             isCorrect: questionAnswers.find(a => a.text.toLowerCase() === 'true')?.isCorrect || false,
@@ -836,12 +738,8 @@ export default function EditCoursePage() {
           }),
         });
 
-        await fetch(`/api/instructor/questions/${questionId}/answers`, {
+        await fetchApi(`/api/instructor/quizzes/question/${questionId}/answers`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify({
             answer: 'False',
             isCorrect: questionAnswers.find(a => a.text.toLowerCase() === 'false')?.isCorrect || false,
@@ -850,12 +748,8 @@ export default function EditCoursePage() {
         });
       } else {
         for (let i = 0; i < questionAnswers.length; i++) {
-          await fetch(`/api/instructor/questions/${questionId}/answers`, {
+          await fetchApi(`/api/instructor/quizzes/question/${questionId}/answers`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
             body: JSON.stringify({
               answer: questionAnswers[i].text.trim(),
               isCorrect: questionAnswers[i].isCorrect,
@@ -905,11 +799,8 @@ export default function EditCoursePage() {
     setDeletingQuestion(questionId);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`/api/instructor/questions/${questionId}`, {
+      const res = await fetchApi(`/api/instructor/quizzes/question/${questionId}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
       });
 
       if (res.ok) {
@@ -934,7 +825,7 @@ export default function EditCoursePage() {
     setPublishingCourse(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`/api/instructor/courses/${courseId}`, {
+      const res = await fetchApi(`/api/instructor/courses/${courseId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -981,7 +872,7 @@ export default function EditCoursePage() {
     setDeletingQuiz(moduleId);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`/api/instructor/modules/${moduleId}/quiz`, {
+      const res = await fetchApi(`/api/instructor/modules/${moduleId}/quiz`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1028,7 +919,7 @@ export default function EditCoursePage() {
       const token = localStorage.getItem('token');
       
       // Create question
-      const questionRes = await fetch(`/api/instructor/quizzes/${quizId}/questions`, {
+      const questionRes = await fetchApi(`/api/instructor/quizzes/${quizId}/questions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1053,7 +944,7 @@ export default function EditCoursePage() {
       // Create answers
       if (questionType === 'true_false') {
         // For true/false, create True and False answers
-        const trueAnswer = await fetch(`/api/instructor/questions/${newQuestionId}/answers`, {
+        const trueAnswer = await fetchApi(`/api/instructor/questions/${newQuestionId}/answers`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1066,7 +957,7 @@ export default function EditCoursePage() {
           }),
         });
 
-        const falseAnswer = await fetch(`/api/instructor/questions/${newQuestionId}/answers`, {
+        const falseAnswer = await fetchApi(`/api/instructor/questions/${newQuestionId}/answers`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1081,7 +972,7 @@ export default function EditCoursePage() {
       } else {
         // For QCM and multiple correct, create answers from form
         for (let i = 0; i < questionAnswers.length; i++) {
-          await fetch(`/api/instructor/questions/${newQuestionId}/answers`, {
+          await fetchApi(`/api/instructor/questions/${newQuestionId}/answers`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1116,7 +1007,7 @@ export default function EditCoursePage() {
     try {
       const token = localStorage.getItem('token');
       // Fetch full question with answers
-      const res = await fetch(`/api/instructor/questions/${question._id}`, {
+      const res = await fetchApi(`/api/instructor/questions/${question._id}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -1145,7 +1036,7 @@ export default function EditCoursePage() {
       const token = localStorage.getItem('token');
       
       // Update question
-      const questionRes = await fetch(`/api/instructor/questions/${questionId}`, {
+      const questionRes = await fetchApi(`/api/instructor/questions/${questionId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1171,23 +1062,16 @@ export default function EditCoursePage() {
       // Delete all existing answers
       if (existingQuestion.answers && existingQuestion.answers.length > 0) {
         for (const answerId of existingQuestion.answers) {
-          await fetch(`/api/instructor/answers/${answerId}`, {
+          await fetchApi(`/api/instructor/quizzes/answer/${answerId}`, {
             method: 'DELETE',
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
           });
         }
       }
 
       // Create new answers
       if (questionType === 'true_false') {
-        const trueAnswer = await fetch(`/api/instructor/questions/${questionId}/answers`, {
+        const trueAnswer = await fetchApi(`/api/instructor/quizzes/question/${questionId}/answers`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify({
             answer: 'True',
             isCorrect: questionAnswers.find(a => a.text.toLowerCase() === 'true')?.isCorrect || false,
@@ -1195,12 +1079,8 @@ export default function EditCoursePage() {
           }),
         });
 
-        const falseAnswer = await fetch(`/api/instructor/questions/${questionId}/answers`, {
+        const falseAnswer = await fetchApi(`/api/instructor/quizzes/question/${questionId}/answers`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify({
             answer: 'False',
             isCorrect: questionAnswers.find(a => a.text.toLowerCase() === 'false')?.isCorrect || false,
@@ -1209,12 +1089,8 @@ export default function EditCoursePage() {
         });
       } else {
         for (let i = 0; i < questionAnswers.length; i++) {
-          await fetch(`/api/instructor/questions/${questionId}/answers`, {
+          await fetchApi(`/api/instructor/quizzes/question/${questionId}/answers`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
             body: JSON.stringify({
               answer: questionAnswers[i].text.trim(),
               isCorrect: questionAnswers[i].isCorrect,
@@ -1260,11 +1136,8 @@ export default function EditCoursePage() {
     setDeletingQuestion(questionId);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`/api/instructor/questions/${questionId}`, {
+      const res = await fetchApi(`/api/instructor/quizzes/question/${questionId}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
       });
 
       if (res.ok) {
@@ -1299,11 +1172,8 @@ export default function EditCoursePage() {
     setDeletingModule(moduleId);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`/api/instructor/modules/${moduleId}`, {
+      const res = await fetchApi(`/api/instructor/modules/${moduleId}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
       });
 
       if (res.ok) {
@@ -1343,7 +1213,7 @@ export default function EditCoursePage() {
         const uploadFormData = new FormData();
         uploadFormData.append('file', newSectionFile);
 
-        const uploadRes = await fetch('/api/instructor/upload', {
+        const uploadRes = await fetchApi('/api/instructor/upload', {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -1376,12 +1246,8 @@ export default function EditCoursePage() {
         setUploadingFile(false);
       }
 
-      const res = await fetch(`/api/instructor/modules/${moduleId}/sections`, {
+      const res = await fetchApi(`/api/instructor/sections/module/${moduleId}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({ 
           title: newSectionTitle.trim(),
           description: newSectionDescription.trim() || undefined,
@@ -1415,7 +1281,7 @@ export default function EditCoursePage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading...</p>
@@ -1424,242 +1290,32 @@ export default function EditCoursePage() {
     );
   }
 
-  if (!user || !course) {
+  if (!course) {
     return null;
   }
 
   return (
     <>
-    <div className="min-h-screen bg-gray-50 overflow-x-hidden">
-      {/* Mobile Sidebar Overlay */}
-      {sidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        ></div>
-      )}
-
-      {/* Sidebar */}
-      <aside className={`fixed lg:fixed w-64 bg-white border-r border-gray-200 h-screen overflow-y-auto z-50 transform transition-transform duration-300 ease-in-out ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-      }`} style={{
-        boxShadow: '4px 0 20px rgba(0, 0, 0, 0.08), 2px 0 10px rgba(0, 0, 0, 0.04)'
-      }}>
-        <div className="p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-6 sm:mb-8">
-            <Link href="/" className="flex items-center gap-2">
-              <img src="/logo.svg" alt="Dar Al-Ilm Logo" className="w-7 h-7 sm:w-8 sm:h-8" />
-              <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Dar Al-Ilm
-              </span>
-            </Link>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="lg:hidden p-1 text-gray-500 hover:text-gray-700"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          <nav className="space-y-1">
-            <Link
-              href="/instructor"
-              onClick={() => setSidebarOpen(false)}
-              className={`flex items-center gap-3 px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-medium transition-colors text-sm sm:text-base ${
-                pathname === '/instructor'
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-              </svg>
-              Dashboard
-            </Link>
-            <Link
-              href="/instructor/courses"
-              onClick={() => setSidebarOpen(false)}
-              className={`flex items-center gap-3 px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-medium transition-colors text-sm sm:text-base ${
-                pathname === '/instructor/courses' || pathname.startsWith('/instructor/courses/')
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
-              My Courses
-            </Link>
-            <Link
-              href="/instructor/categories"
-              onClick={() => setSidebarOpen(false)}
-              className={`flex items-center gap-3 px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-medium transition-colors text-sm sm:text-base ${
-                pathname === '/instructor/categories'
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-              </svg>
-              Categories
-            </Link>
-            <Link
-              href="/instructor/students"
-              onClick={() => setSidebarOpen(false)}
-              className={`flex items-center gap-3 px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-medium transition-colors text-sm sm:text-base ${
-                pathname === '/instructor/students'
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-              Students
-            </Link>
-            <Link
-              href="/instructor/analytics"
-              onClick={() => setSidebarOpen(false)}
-              className={`flex items-center gap-3 px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-medium transition-colors text-sm sm:text-base ${
-                pathname === '/instructor/analytics'
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              Analytics
-            </Link>
-            <Link
-              href="/instructor/settings"
-              onClick={() => setSidebarOpen(false)}
-              className={`flex items-center gap-3 px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-medium transition-colors text-sm sm:text-base ${
-                pathname === '/instructor/settings'
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              Settings
-            </Link>
-          </nav>
+    <div className="p-3 sm:p-4 max-w-7xl mx-auto">
+      {/* Header Section */}
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{course.title}</h1>
+          <p className="text-gray-600 mt-2">Edit course modules and content</p>
         </div>
-      </aside>
-
-      {/* Main Content */}
-      <div className="w-full lg:ml-64 lg:w-[calc(100%-16rem)]">
-        {/* Top Header */}
-        <header className="bg-white border-b border-gray-200 fixed top-0 left-0 right-0 lg:left-64 z-30 backdrop-blur-sm bg-white/95" style={{
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08), 0 2px 10px rgba(0, 0, 0, 0.04)'
-        }}>
-          <div className="px-4 sm:px-6 py-3 sm:py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 sm:gap-4">
-                <button
-                  onClick={() => setSidebarOpen(true)}
-                  className="lg:hidden p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  </svg>
-                </button>
-                <div>
-                  <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">{course.title}</h1>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 sm:gap-4">
-                <button 
-                  onClick={() => router.push('/instructor/courses')}
-                  className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all flex items-center gap-2 font-medium"
-                  title="Back to Courses"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                  <span className="hidden sm:inline">Back to Courses</span>
-                </button>
-                <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all relative group">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                  </svg>
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
-                </button>
-                
-                {/* Profile Dropdown */}
-                <div className="relative" ref={dropdownRef}>
-                  <button
-                    onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-                    className="flex items-center gap-2 p-1 rounded-lg hover:bg-gray-100 transition-all cursor-pointer group"
-                  >
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg ring-2 ring-white group-hover:ring-blue-200 transition-all">
-                      {user.firstName.charAt(0)}{user.lastName.charAt(0)}
-                    </div>
-                    <svg className="w-4 h-4 text-gray-600 group-hover:text-gray-900 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-
-                  {/* Dropdown Menu */}
-                  {showProfileDropdown && (
-                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-200 py-2 z-20 animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
-                        <div className="px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50">
-                          <p className="text-sm font-semibold text-gray-900">{user.firstName} {user.lastName}</p>
-                          <p className="text-xs text-gray-500 truncate mt-0.5">{user.email}</p>
-                        </div>
-                        <div className="py-1">
-                          <button
-                            onClick={() => { setShowProfileDropdown(false); router.push('/instructor/profile'); }}
-                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors cursor-pointer"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                            Profile
-                          </button>
-                          <button
-                            onClick={handleSettings}
-                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors cursor-pointer"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            Settings
-                          </button>
-                        </div>
-                        <div className="border-t border-gray-200 py-1">
-                          <button
-                            onClick={handleLogout}
-                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                            </svg>
-                            Logout
-                          </button>
-                        </div>
-                      </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Main Content Area */}
-        <main 
-          className="p-3 sm:p-4 pt-20 sm:pt-24 max-w-7xl mx-auto"
-          onClick={() => setShowProfileDropdown(false)}
+        <Link
+          href="/instructor/courses"
+          className="px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all flex items-center gap-2 font-medium"
         >
-          {/* Tabs */}
-          <div className="flex gap-2 mb-4 border-b border-gray-200">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          <span className="hidden sm:inline">Back to Courses</span>
+        </Link>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 mb-4 border-b border-gray-200">
             <button
               onClick={() => setActiveTab('modules')}
               className={`px-4 py-2 font-medium text-sm transition-colors ${
@@ -2121,7 +1777,7 @@ export default function EditCoursePage() {
                                         setCreatingQuiz(true);
                                         try {
                                           const token = localStorage.getItem('token');
-                                          const quizRes = await fetch(`/api/instructor/modules/${module._id}/quiz`, {
+                                          const quizRes = await fetchApi(`/api/instructor/modules/${module._id}/quiz`, {
                                             method: 'POST',
                                             headers: {
                                               'Content-Type': 'application/json',
@@ -2187,7 +1843,7 @@ export default function EditCoursePage() {
                                         const token = localStorage.getItem('token');
                                         
                                         // Create question
-                                        const questionRes = await fetch(`/api/instructor/quizzes/${currentQuizId}/questions`, {
+                                        const questionRes = await fetchApi(`/api/instructor/quizzes/${currentQuizId}/questions`, {
                                           method: 'POST',
                                           headers: {
                                             'Content-Type': 'application/json',
@@ -2211,7 +1867,7 @@ export default function EditCoursePage() {
 
                                         // Create answers
                                         if (questionType === 'true_false') {
-                                          const trueAnswer = await fetch(`/api/instructor/questions/${newQuestionId}/answers`, {
+                                          const trueAnswer = await fetchApi(`/api/instructor/questions/${newQuestionId}/answers`, {
                                             method: 'POST',
                                             headers: {
                                               'Content-Type': 'application/json',
@@ -2224,7 +1880,7 @@ export default function EditCoursePage() {
                                             }),
                                           });
 
-                                          const falseAnswer = await fetch(`/api/instructor/questions/${newQuestionId}/answers`, {
+                                          const falseAnswer = await fetchApi(`/api/instructor/questions/${newQuestionId}/answers`, {
                                             method: 'POST',
                                             headers: {
                                               'Content-Type': 'application/json',
@@ -2238,7 +1894,7 @@ export default function EditCoursePage() {
                                           });
                                         } else {
                                           for (let i = 0; i < questionAnswers.length; i++) {
-                                            await fetch(`/api/instructor/questions/${newQuestionId}/answers`, {
+                                            await fetchApi(`/api/instructor/questions/${newQuestionId}/answers`, {
                                               method: 'POST',
                                               headers: {
                                                 'Content-Type': 'application/json',
@@ -2916,7 +2572,7 @@ export default function EditCoursePage() {
                             if (!course.finalExam) {
                               const token = localStorage.getItem('token');
                               try {
-                                const res = await fetch(`/api/instructor/courses/${courseId}/final-exam`, {
+                                const res = await fetchApi(`/api/instructor/courses/${courseId}/final-exam`, {
                                   method: 'POST',
                                   headers: {
                                     'Content-Type': 'application/json',
@@ -3391,21 +3047,20 @@ export default function EditCoursePage() {
               )}
             </div>
           )}
-        </main>
+
+        {dialog && (
+          <ConfirmDialog
+            isOpen={dialog.isOpen}
+            title={dialog.title}
+            message={dialog.message}
+            confirmText={dialog.confirmText}
+            cancelText={dialog.cancelText}
+            confirmColor={dialog.confirmColor}
+            onConfirm={dialog.onConfirm}
+            onCancel={closeDialog}
+          />
+        )}
       </div>
-      {dialog && (
-        <ConfirmDialog
-          isOpen={dialog.isOpen}
-          title={dialog.title}
-          message={dialog.message}
-          confirmText={dialog.confirmText}
-          cancelText={dialog.cancelText}
-          confirmColor={dialog.confirmColor}
-          onConfirm={dialog.onConfirm}
-          onCancel={closeDialog}
-        />
-      )}
-    </div>
     </>
   );
 }

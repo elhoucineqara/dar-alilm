@@ -1,17 +1,8 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import StudentLayout from '../components/StudentLayout';
-
-interface User {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  role: string;
-}
+import { fetchApi, getFileUrl } from '@/lib/api-client';
 
 interface Statistics {
   totalEnrollments: number;
@@ -46,72 +37,20 @@ interface Course {
 }
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
   const [statistics, setStatistics] = useState<Statistics | null>(null);
   const [recentCourses, setRecentCourses] = useState<Course[]>([]);
   const [loadingStats, setLoadingStats] = useState(true);
   const [loadingCourses, setLoadingCourses] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      router.push('/login');
-      return;
-    }
+    fetchStatistics();
+    fetchRecentCourses();
+  }, []);
 
-    // Fetch user info
-    fetch('/api/auth/me', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then((res) => {
-        if (!res.ok) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          router.push('/login');
-          return;
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (data) {
-          setUser(data.user);
-          if (data.user.role !== 'student') {
-            // Redirect non-students to their respective dashboards
-            if (data.user.role === 'instructor') {
-              router.push('/instructor');
-            } else if (data.user.role === 'admin') {
-              router.push('/admin');
-            }
-            return;
-          }
-          // Fetch statistics and courses for students
-          fetchStatistics(token);
-          fetchRecentCourses(token);
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        router.push('/login');
-      });
-  }, [router]);
-
-  const fetchStatistics = async (token: string) => {
+  const fetchStatistics = async () => {
     try {
       setLoadingStats(true);
-      const res = await fetch('/api/student/statistics', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetchApi('/api/student/statistics');
       if (res.ok) {
         const data = await res.json();
         setStatistics(data.statistics);
@@ -123,14 +62,10 @@ export default function DashboardPage() {
     }
   };
 
-  const fetchRecentCourses = async (token: string) => {
+  const fetchRecentCourses = async () => {
     try {
       setLoadingCourses(true);
-      const res = await fetch('/api/student/courses', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetchApi('/api/student/courses');
       if (res.ok) {
         const data = await res.json();
         setRecentCourses(data.courses.slice(0, 6)); // Show only 6 recent courses
@@ -142,56 +77,8 @@ export default function DashboardPage() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/login');
-  };
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowProfileDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user || user.role !== 'student') {
-    return null;
-  }
-
   return (
-    <StudentLayout
-      user={user}
-      sidebarOpen={sidebarOpen}
-      setSidebarOpen={setSidebarOpen}
-      showProfileDropdown={showProfileDropdown}
-      setShowProfileDropdown={setShowProfileDropdown}
-      dropdownRef={dropdownRef}
-      onProfileClick={() => router.push('/dashboard/profile')}
-      onSettingsClick={() => router.push('/dashboard/settings')}
-      onLogout={handleLogout}
-      pageTitle="Dashboard"
-      pageSubtitle={`Bienvenue, ${user.firstName} !`}
-    >
-      <div className="max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto">
         {/* Statistics Cards */}
         {loadingStats ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -207,7 +94,7 @@ export default function DashboardPage() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Cours Inscrits</p>
+                  <p className="text-sm text-gray-600 mb-1">Enrolled Courses</p>
                   <p className="text-3xl font-bold text-gray-900">{statistics.totalEnrollments}</p>
                 </div>
                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -221,7 +108,7 @@ export default function DashboardPage() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">En Cours</p>
+                  <p className="text-sm text-gray-600 mb-1">In Progress</p>
                   <p className="text-3xl font-bold text-gray-900">{statistics.coursesInProgress}</p>
                 </div>
                 <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
@@ -265,9 +152,9 @@ export default function DashboardPage() {
         {/* Recent Courses */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-gray-900">Mes Cours Récents</h2>
+            <h2 className="text-xl font-bold text-gray-900">My Recent Courses</h2>
             <Link href="/dashboard/courses" className="text-blue-600 hover:text-blue-700 font-medium text-sm">
-              Voir tout →
+              View all →
             </Link>
           </div>
 
@@ -291,7 +178,7 @@ export default function DashboardPage() {
                 >
                   {item.course.thumbnail ? (
                     <img
-                      src={item.course.thumbnail}
+                      src={getFileUrl(item.course.thumbnail)}
                       alt={item.course.title}
                       className="w-full h-48 object-cover group-hover:scale-105 transition-transform"
                     />
@@ -329,18 +216,16 @@ export default function DashboardPage() {
               <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
               </svg>
-              <p className="text-gray-600 mb-4">Vous n'êtes inscrit à aucun cours pour le moment</p>
+              <p className="text-gray-600 mb-4">You are not enrolled in any courses at the moment</p>
               <Link
                 href="/"
                 className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                Explorer les cours
+                Explore courses
               </Link>
             </div>
           )}
-        </div>
       </div>
-    </StudentLayout>
+    </div>
   );
 }
-

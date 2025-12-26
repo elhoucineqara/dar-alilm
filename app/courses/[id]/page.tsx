@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { fetchApi, getFileUrl as getBackendFileUrl } from '@/lib/api-client';
 
 interface Section {
   _id: string;
@@ -69,7 +70,7 @@ interface Course {
 
 function getFileUrl(section: Section): string | undefined {
   if (section.fileId) {
-    return `/api/files/${section.fileId}`;
+    return getBackendFileUrl(`/api/files/${section.fileId}`);
   }
   return section.fileUrl;
 }
@@ -145,7 +146,7 @@ export default function CourseViewPage() {
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
-        const res = await fetch(`/api/courses/${courseId}`, {
+        const res = await fetchApi(`/api/courses/${courseId}`, {
           headers,
         });
         
@@ -163,18 +164,31 @@ export default function CourseViewPage() {
         }
 
         const data = await res.json();
+        console.log('Course data loaded:', data.course);
+        console.log('Modules:', data.course.modules);
         setCourse(data.course);
         
         // Expand first module and set first section as active by default
         if (data.course.modules && data.course.modules.length > 0) {
           const firstModule = data.course.modules[0];
+          console.log('First module:', firstModule);
+          console.log('First module sections:', firstModule.sections);
           setExpandedModule(firstModule._id);
           if (firstModule.sections && firstModule.sections.length > 0) {
+            const firstSection = firstModule.sections[0];
+            console.log('Setting active section:', {
+              moduleId: firstModule._id,
+              sectionId: firstSection._id
+            });
             setActiveSection({
               moduleId: firstModule._id,
-              sectionId: firstModule.sections[0]._id
+              sectionId: firstSection._id
             });
+          } else {
+            console.log('No sections in first module');
           }
+        } else {
+          console.log('No modules in course');
         }
       } catch (error) {
         console.error('Error fetching course:', error);
@@ -250,10 +264,30 @@ export default function CourseViewPage() {
 
   // Get current section
   const currentSection = activeSection 
-    ? course.modules
+    ? course?.modules
         ?.find(m => m._id === activeSection.moduleId)
         ?.sections?.find(s => s._id === activeSection.sectionId)
     : null;
+
+  // Debug current section (only log when section changes)
+  useEffect(() => {
+    if (currentSection) {
+      console.log('Current section details:', {
+        _id: currentSection._id,
+        title: currentSection.title,
+        type: currentSection.type,
+        fileId: currentSection.fileId,
+        fileUrl: currentSection.fileUrl,
+        fileType: currentSection.fileType,
+        youtubeUrl: currentSection.youtubeUrl,
+      });
+    } else if (activeSection && course) {
+      console.log('No current section found for activeSection:', activeSection);
+      const module = course.modules?.find(m => m._id === activeSection.moduleId);
+      console.log('Found module:', module);
+      console.log('Module sections:', module?.sections);
+    }
+  }, [currentSection?._id, activeSection?.sectionId]); // Only log when IDs change
 
   // Get current quiz
   const currentQuiz = activeQuiz
@@ -350,7 +384,7 @@ export default function CourseViewPage() {
               <h2 className="hidden lg:block text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Course Content</h2>
               {course.modules && course.modules.length > 0 ? (
                 course.modules.map((module, moduleIndex) => (
-                  <div key={module._id} className="mb-4">
+                  <div key={module._id || `module-${moduleIndex}`} className="mb-4">
                     <button
                       onClick={() => setExpandedModule(expandedModule === module._id ? null : module._id)}
                       className="w-full flex items-center justify-between p-2.5 sm:p-3 rounded-lg hover:bg-gray-50 transition-colors group"
@@ -388,7 +422,7 @@ export default function CourseViewPage() {
                           const isActive = activeSection?.moduleId === module._id && activeSection?.sectionId === section._id;
                           return (
                             <button
-                              key={section._id}
+                              key={section._id || `section-${moduleIndex}-${sectionIndex}`}
                               onClick={() => {
                                 setActiveSection({ moduleId: module._id, sectionId: section._id });
                                 setActiveQuiz(null);
@@ -553,7 +587,7 @@ export default function CourseViewPage() {
                                 {currentQuestion.answers && 
                                  currentQuestion.answers.length > 0 ? (
                                   <div className="space-y-2">
-                                    {currentQuestion.answers.map((answer) => {
+                                    {currentQuestion.answers.map((answer, answerIndex) => {
                                       const questionId = currentQuestion._id;
                                 const isSelected = selectedAnswers[questionId] === answer._id;
                                 const isCorrect = answer.isCorrect;
@@ -562,7 +596,7 @@ export default function CourseViewPage() {
                                 
                                 return (
                                   <button
-                                    key={answer._id}
+                                    key={answer._id || `answer-${questionId}-${answerIndex}`}
                                     type="button"
                                     onClick={() => {
                                       if (!showResults) {
@@ -880,7 +914,14 @@ export default function CourseViewPage() {
               {/* Section Content - Flexible */}
               <div className="flex-1 overflow-hidden bg-gray-50" style={{ paddingBottom: '80px' }}>
                 <div className="w-full h-full">
-                  {currentSection.type === 'file' && (currentSection.fileId || currentSection.fileUrl) && (
+                  {!currentSection.type ? (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="text-center p-8">
+                        <p className="text-red-600 mb-4">Error: Section type is missing</p>
+                        <pre className="text-xs bg-gray-100 p-4 rounded overflow-auto">{JSON.stringify(currentSection, null, 2)}</pre>
+                      </div>
+                    </div>
+                  ) : currentSection.type === 'file' && (currentSection.fileId || currentSection.fileUrl) ? (
                     <div className="h-full w-full overflow-hidden">
                       {/* Document Viewer */}
                       {currentSection.fileType === 'pdf' ? (
@@ -962,9 +1003,7 @@ export default function CourseViewPage() {
                           </div>
                       )}
                     </div>
-                    )}
-
-                    {currentSection.type === 'youtube' && currentSection.youtubeUrl && (
+                  ) : currentSection.type === 'youtube' && currentSection.youtubeUrl ? (
                       <div className="h-full w-full bg-black overflow-hidden p-0">
                         <iframe
                           src={getYouTubeEmbedUrl(currentSection.youtubeUrl)}
@@ -976,7 +1015,18 @@ export default function CourseViewPage() {
                           style={{ aspectRatio: '16/9' }}
                         ></iframe>
                       </div>
-                    )}
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="text-center p-8">
+                        <p className="text-gray-600 mb-4">No content available for this section</p>
+                        <p className="text-sm text-gray-500 mb-2">Section type: {currentSection.type || 'undefined'}</p>
+                        <p className="text-sm text-gray-500 mb-2">File ID: {currentSection.fileId || 'none'}</p>
+                        <p className="text-sm text-gray-500 mb-2">File URL: {currentSection.fileUrl || 'none'}</p>
+                        <p className="text-sm text-gray-500 mb-4">YouTube URL: {currentSection.youtubeUrl || 'none'}</p>
+                        <pre className="text-xs bg-gray-100 p-4 rounded overflow-auto max-w-2xl mx-auto">{JSON.stringify(currentSection, null, 2)}</pre>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

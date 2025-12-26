@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { fetchApi, getFileUrl as getBackendFileUrl } from '@/lib/api-client';
 import StudentLayout from '../../../components/StudentLayout';
 
 interface User {
@@ -78,7 +79,7 @@ interface Course {
 
 function getFileUrl(section: Section): string | undefined {
   if (section.fileId) {
-    return `/api/files/${section.fileId}`;
+    return getBackendFileUrl(`/api/files/${section.fileId}`);
   }
   return section.fileUrl;
 }
@@ -187,11 +188,7 @@ export default function DashboardCourseViewPage() {
     }
 
     // Fetch user info
-    fetch('/api/auth/me', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
+    fetchApi('/api/auth/me')
       .then((res) => {
         if (!res.ok) {
           localStorage.removeItem('token');
@@ -228,11 +225,7 @@ export default function DashboardCourseViewPage() {
 
     try {
       setLoading(true);
-      const res = await fetch(`/api/student/courses`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetchApi(`/api/student/courses`);
       
       if (!res.ok) {
         setError('Failed to load course');
@@ -246,12 +239,8 @@ export default function DashboardCourseViewPage() {
       // If course is not enrolled, try to enroll automatically
       if (!enrolledCourse) {
         try {
-          const enrollRes = await fetch('/api/student/enroll', {
+          const enrollRes = await fetchApi('/api/student/enroll', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
             body: JSON.stringify({ courseId }),
           });
 
@@ -261,11 +250,7 @@ export default function DashboardCourseViewPage() {
             await new Promise(resolve => setTimeout(resolve, 500));
             
             // Reload courses to verify enrollment
-            const refreshRes = await fetch(`/api/student/courses`, {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            });
+            const refreshRes = await fetchApi(`/api/student/courses`);
             
             if (refreshRes.ok) {
               const refreshData = await refreshRes.json();
@@ -283,11 +268,7 @@ export default function DashboardCourseViewPage() {
       }
 
       // Fetch full course details (this will check enrollment internally)
-      const courseRes = await fetch(`/api/courses/${courseId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const courseRes = await fetchApi(`/api/courses/${courseId}`);
 
       if (!courseRes.ok) {
         const errorData = await courseRes.json();
@@ -305,11 +286,7 @@ export default function DashboardCourseViewPage() {
       setCourse(courseData.course);
       
       // Fetch progress to restore last accessed section
-      const progressRes = await fetch(`/api/student/progress?courseId=${courseId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const progressRes = await fetchApi(`/api/student/progress?courseId=${courseId}`);
 
       let lastModuleId: string | null = null;
       let lastSectionId: string | null = null;
@@ -394,12 +371,8 @@ export default function DashboardCourseViewPage() {
     if (!token || !courseId) return;
 
     try {
-      const response = await fetch('/api/student/progress', {
+      const response = await fetchApi('/api/student/progress', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           courseId,
           moduleId,
@@ -411,11 +384,7 @@ export default function DashboardCourseViewPage() {
       
       // Refresh progress data
       if (response.ok) {
-        const progressRes = await fetch(`/api/student/progress?courseId=${courseId}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        const progressRes = await fetchApi(`/api/student/progress?courseId=${courseId}`);
         
         if (progressRes.ok) {
           const progressData = await progressRes.json();
@@ -1120,7 +1089,7 @@ export default function DashboardCourseViewPage() {
       console.log('Course ID:', course._id);
       console.log('Token exists:', !!token);
       
-      const res = await fetch('/api/student/certificates', {
+      const res = await fetchApi('/api/student/certificates', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

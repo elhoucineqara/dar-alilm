@@ -1,17 +1,8 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import StudentLayout from '../../components/StudentLayout';
-
-interface User {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  role: string;
-}
+import { fetchApi, getFileUrl } from '@/lib/api-client';
 
 interface Course {
   enrollment: {
@@ -39,68 +30,18 @@ interface Course {
 }
 
 export default function MyCoursesPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
   const [courses, setCourses] = useState<Course[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      router.push('/login');
-      return;
-    }
+    fetchCourses();
+  }, []);
 
-    // Fetch user info
-    fetch('/api/auth/me', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then((res) => {
-        if (!res.ok) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          router.push('/login');
-          return;
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (data) {
-          setUser(data.user);
-          if (data.user.role !== 'student') {
-            if (data.user.role === 'instructor') {
-              router.push('/instructor');
-            } else if (data.user.role === 'admin') {
-              router.push('/admin');
-            }
-            return;
-          }
-          fetchCourses(token);
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        router.push('/login');
-      });
-  }, [router]);
-
-  const fetchCourses = async (token: string) => {
+  const fetchCourses = async () => {
     try {
       setLoadingCourses(true);
-      const res = await fetch('/api/student/courses', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetchApi('/api/student/courses');
       if (res.ok) {
         const data = await res.json();
         setCourses(data.courses || []);
@@ -112,26 +53,6 @@ export default function MyCoursesPage() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/login');
-  };
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowProfileDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
   const filteredCourses = courses.filter((item) => {
     if (filter === 'active') {
       return item.enrollment.status === 'active' && (!item.progress || item.progress.overallProgress < 100);
@@ -142,36 +63,8 @@ export default function MyCoursesPage() {
     return true;
   });
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Chargement...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user || user.role !== 'student') {
-    return null;
-  }
-
   return (
-    <StudentLayout
-      user={user}
-      sidebarOpen={sidebarOpen}
-      setSidebarOpen={setSidebarOpen}
-      showProfileDropdown={showProfileDropdown}
-      setShowProfileDropdown={setShowProfileDropdown}
-      dropdownRef={dropdownRef}
-      onProfileClick={() => router.push('/dashboard/profile')}
-      onSettingsClick={() => router.push('/dashboard/settings')}
-      onLogout={handleLogout}
-      pageTitle="Mes Cours"
-      pageSubtitle="Gérez vos cours et suivez votre progression"
-    >
-      <div className="max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto">
         {/* Filter Tabs */}
         <div className="mb-6 flex gap-2 border-b border-gray-200">
           <button
@@ -182,7 +75,7 @@ export default function MyCoursesPage() {
                 : 'border-transparent text-gray-600 hover:text-gray-900'
             }`}
           >
-            Tous ({courses.length})
+            All ({courses.length})
           </button>
           <button
             onClick={() => setFilter('active')}
@@ -192,7 +85,7 @@ export default function MyCoursesPage() {
                 : 'border-transparent text-gray-600 hover:text-gray-900'
             }`}
           >
-            En Cours ({courses.filter(c => c.enrollment.status === 'active' && (!c.progress || c.progress.overallProgress < 100)).length})
+            In Progress ({courses.filter(c => c.enrollment.status === 'active' && (!c.progress || c.progress.overallProgress < 100)).length})
           </button>
           <button
             onClick={() => setFilter('completed')}
@@ -202,7 +95,7 @@ export default function MyCoursesPage() {
                 : 'border-transparent text-gray-600 hover:text-gray-900'
             }`}
           >
-            Complétés ({courses.filter(c => c.enrollment.status === 'completed' || (c.progress && c.progress.overallProgress === 100)).length})
+            Completed ({courses.filter(c => c.enrollment.status === 'completed' || (c.progress && c.progress.overallProgress === 100)).length})
           </button>
         </div>
 
@@ -230,7 +123,7 @@ export default function MyCoursesPage() {
                 {item.course.thumbnail ? (
                   <div className="relative h-48 overflow-hidden">
                     <img
-                      src={item.course.thumbnail}
+                      src={getFileUrl(item.course.thumbnail)}
                       alt={item.course.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
@@ -273,7 +166,7 @@ export default function MyCoursesPage() {
 
                   {item.course.instructor && (
                     <p className="text-xs text-gray-500 mb-3">
-                      Par {typeof item.course.instructor === 'object' 
+                      By {typeof item.course.instructor === 'object' 
                         ? `${item.course.instructor.firstName} ${item.course.instructor.lastName}`
                         : item.course.instructor}
                     </p>
@@ -328,30 +221,28 @@ export default function MyCoursesPage() {
             </svg>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
               {filter === 'active' 
-                ? 'Aucun cours en cours'
-                : filter === 'completed'
-                ? 'Aucun cours complété'
-                : 'Aucun cours trouvé'}
+                ? 'No courses in progress'
+              : filter === 'completed'
+                ? 'No courses completed'
+                : 'No courses found'}
             </h3>
             <p className="text-gray-600 mb-6">
               {filter === 'all'
-                ? "Vous n'êtes inscrit à aucun cours pour le moment"
-                : filter === 'active'
-                ? "Vous n'avez pas de cours en cours d'apprentissage"
-                : "Vous n'avez pas encore complété de cours"}
+                ? "You are not enrolled in any courses at the moment"
+              : filter === 'active'
+                ? "You don't have any courses in progress"
+                : "You haven't completed any courses yet"}
             </p>
             {filter === 'all' && (
               <Link
                 href="/"
                 className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
               >
-                Explorer les cours
+                Explore courses
               </Link>
             )}
           </div>
         )}
-      </div>
-    </StudentLayout>
+    </div>
   );
 }
-

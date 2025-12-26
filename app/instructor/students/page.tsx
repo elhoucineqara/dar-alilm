@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import InstructorLayout from '@/app/components/InstructorLayout';
+import { fetchApi } from '../../../lib/api-client';
 
 interface Student {
   _id: string;
@@ -37,11 +37,7 @@ export default function StudentsPage() {
   const fetchCourses = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('/api/instructor/courses', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetchApi('/api/instructor/courses');
 
       if (res.ok) {
         const data = await res.json();
@@ -60,11 +56,7 @@ export default function StudentsPage() {
         ? '/api/instructor/students' 
         : `/api/instructor/students?courseId=${selectedCourse}`;
       
-      const res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetchApi(url);
 
       if (res.ok) {
         const data = await res.json();
@@ -118,8 +110,7 @@ export default function StudentsPage() {
   };
 
   return (
-    <InstructorLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -266,7 +257,6 @@ export default function StudentsPage() {
           </div>
         )}
       </div>
-    </InstructorLayout>
   );
 }
 

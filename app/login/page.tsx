@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { fetchApi } from '@/lib/api-client';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -44,11 +45,8 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetchApi('/api/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(formData),
       });
 

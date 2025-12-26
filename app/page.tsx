@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { fetchApi, getFileUrl } from '@/lib/api-client';
 
 interface Course {
   _id: string;
@@ -16,6 +17,7 @@ interface Course {
     _id: string;
     firstName: string;
     lastName: string;
+    profileImage?: string;
   } | string;
   price: number;
   thumbnail?: string;
@@ -52,7 +54,7 @@ export default function Home() {
   const fetchPublishedCourses = async () => {
     try {
       setLoadingCourses(true);
-      const res = await fetch('/api/courses?limit=6');
+      const res = await fetchApi('/api/courses?limit=6');
       if (res.ok) {
         const data = await res.json();
         setCourses(data.courses || []);
@@ -340,9 +342,11 @@ export default function Home() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               {courses.map((course) => {
                 const categoryName = typeof course.categoryId === 'object' && course.categoryId ? course.categoryId.name : 'Uncategorized';
-                const instructorName = typeof course.instructorId === 'object' && course.instructorId 
-                  ? `${course.instructorId.firstName} ${course.instructorId.lastName}`
+                const instructor = typeof course.instructorId === 'object' && course.instructorId ? course.instructorId : null;
+                const instructorName = instructor 
+                  ? `${instructor.firstName} ${instructor.lastName}`
                   : 'Instructor';
+                const instructorProfileImage = instructor?.profileImage;
                 
                 return (
                   <div
@@ -350,11 +354,15 @@ export default function Home() {
                     className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-xl transition-all hover:-translate-y-1"
                   >
                     {course.thumbnail ? (
-                      <div className="w-full h-40 bg-gray-200 overflow-hidden">
+                      <div className="w-full h-40 bg-white border-b border-gray-200 flex items-center justify-center overflow-hidden">
                         <img 
-                          src={course.thumbnail} 
+                          src={getFileUrl(course.thumbnail)} 
                           alt={course.title} 
-                          className="w-full h-full object-cover"
+                          className="max-w-full max-h-full object-contain"
+                          onError={(e) => {
+                            console.error('Error loading course thumbnail:', getFileUrl(course.thumbnail));
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
                         />
                       </div>
                     ) : (
@@ -371,7 +379,20 @@ export default function Home() {
                       <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2">{course.title}</h3>
                       <p className="text-sm text-gray-600 mb-3 line-clamp-2">{course.description}</p>
                       <div className="flex items-center justify-between mb-3">
-                        <span className="text-xs text-gray-500">By {instructorName}</span>
+                        <div className="flex items-center gap-2">
+                          {instructorProfileImage ? (
+                            <img 
+                              src={getFileUrl(instructorProfileImage)} 
+                              alt={instructorName}
+                              className="w-6 h-6 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-semibold">
+                              {instructor ? instructor.firstName.charAt(0) : 'I'}
+                            </div>
+                          )}
+                          <span className="text-xs text-gray-500">By {instructorName}</span>
+                        </div>
                         <span className="text-lg font-bold text-blue-600">
                           ${course.price === 0 ? 'Free' : course.price.toFixed(2)}
                         </span>
@@ -388,7 +409,7 @@ export default function Home() {
                               if (user.role === 'student') {
                                 // Auto-enroll student in course
                                 try {
-                                  const enrollRes = await fetch('/api/student/enroll', {
+                                  const enrollRes = await fetchApi('/api/student/enroll', {
                                     method: 'POST',
                                     headers: {
                                       'Content-Type': 'application/json',
