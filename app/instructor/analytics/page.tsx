@@ -43,7 +43,7 @@ export default function AnalyticsPage() {
       .then((data) => {
         if (data) {
           if (data.user.role !== 'instructor') {
-            router.push('/dashboard');
+            router.push('/student/dashboard');
             return;
           }
           fetchAnalytics(token);

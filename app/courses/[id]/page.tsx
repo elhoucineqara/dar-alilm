@@ -215,6 +215,33 @@ export default function CourseViewPage() {
     setShowResults(false);
   }, [currentQuestionIndex]);
 
+  // Get current section (calculated before conditional returns)
+  const currentSection = course && activeSection
+    ? course.modules
+        ?.find(m => m._id === activeSection.moduleId)
+        ?.sections?.find(s => s._id === activeSection.sectionId)
+    : null;
+
+  // Debug current section (only log when section changes)
+  useEffect(() => {
+    if (currentSection) {
+      console.log('Current section details:', {
+        _id: currentSection._id,
+        title: currentSection.title,
+        type: currentSection.type,
+        fileId: currentSection.fileId,
+        fileUrl: currentSection.fileUrl,
+        fileType: currentSection.fileType,
+        youtubeUrl: currentSection.youtubeUrl,
+      });
+    } else if (activeSection && course) {
+      console.log('No current section found for activeSection:', activeSection);
+      const module = course.modules?.find(m => m._id === activeSection.moduleId);
+      console.log('Found module:', module);
+      console.log('Module sections:', module?.sections);
+    }
+  }, [currentSection?._id, activeSection?.sectionId, course]); // Only log when IDs change
+
   // Calculate quiz score
   const calculateQuizScore = (quiz: Quiz): number => {
     if (!quiz.questions || quiz.questions.length === 0) return 0;
@@ -260,34 +287,6 @@ export default function CourseViewPage() {
       </div>
     );
   }
-
-
-  // Get current section
-  const currentSection = activeSection 
-    ? course?.modules
-        ?.find(m => m._id === activeSection.moduleId)
-        ?.sections?.find(s => s._id === activeSection.sectionId)
-    : null;
-
-  // Debug current section (only log when section changes)
-  useEffect(() => {
-    if (currentSection) {
-      console.log('Current section details:', {
-        _id: currentSection._id,
-        title: currentSection.title,
-        type: currentSection.type,
-        fileId: currentSection.fileId,
-        fileUrl: currentSection.fileUrl,
-        fileType: currentSection.fileType,
-        youtubeUrl: currentSection.youtubeUrl,
-      });
-    } else if (activeSection && course) {
-      console.log('No current section found for activeSection:', activeSection);
-      const module = course.modules?.find(m => m._id === activeSection.moduleId);
-      console.log('Found module:', module);
-      console.log('Module sections:', module?.sections);
-    }
-  }, [currentSection?._id, activeSection?.sectionId]); // Only log when IDs change
 
   // Get current quiz
   const currentQuiz = activeQuiz
@@ -1095,94 +1094,135 @@ export default function CourseViewPage() {
                     </svg>
                     <span className="hidden sm:inline">Previous</span>
                   </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
+                    {(() => {
+                      // Check if we're on the last section of the last module with no quiz
+                      const modules = course.modules || [];
+                      const isLastSectionOfLastModule = (() => {
+                        if (!activeSection || modules.length === 0) return false;
                         
-                        if (!currentSection || !activeSection) return;
+                        const lastModule = modules[modules.length - 1];
+                        if (lastModule._id !== activeSection.moduleId) return false;
                         
-                        const modules = course.modules || [];
-                        let navigated = false;
+                        const sections = lastModule.sections || [];
+                        if (sections.length === 0) return false;
                         
-                        // Find current module and section index
-                        for (let i = 0; i < modules.length; i++) {
-                          const module = modules[i];
-                          
-                          if (module._id === activeSection.moduleId) {
-                            const sections = module.sections || [];
+                        const lastSection = sections[sections.length - 1];
+                        if (lastSection._id !== activeSection.sectionId) return false;
+                        
+                        // Check if there's no quiz for this module and no final exam
+                        if (lastModule.quiz) return false;
+                        if (course.finalExam) return false;
+                        
+                        return true;
+                      })();
+                      
+                      if (isLastSectionOfLastModule) {
+                        return (
+                          <Link
+                            href="/courses"
+                            className="px-3 sm:px-4 lg:px-6 py-2 sm:py-2.5 lg:py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg text-xs sm:text-sm font-semibold transition-all shadow-md hover:shadow-lg flex items-center gap-1 sm:gap-2 cursor-pointer relative z-50"
+                            style={{ pointerEvents: 'auto' }}
+                          >
+                            <span className="hidden sm:inline">Back to Courses</span>
+                            <span className="sm:hidden">Back</span>
+                            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </Link>
+                        );
+                      }
+                      
+                      return (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
                             
-                            // Find current section index
-                            for (let j = 0; j < sections.length; j++) {
-                              if (sections[j]._id === activeSection.sectionId) {
-                                // 1. Try next section in current module
-                                if (j < sections.length - 1) {
-                                  setActiveSection({ 
-                                    moduleId: module._id, 
-                                    sectionId: sections[j + 1]._id 
-                                  });
-                                  setActiveQuiz(null);
-                                  navigated = true;
-                                  break;
-                                }
+                            if (!currentSection || !activeSection) return;
+                            
+                            const modules = course.modules || [];
+                            let navigated = false;
+                            
+                            // Find current module and section index
+                            for (let i = 0; i < modules.length; i++) {
+                              const module = modules[i];
+                              
+                              if (module._id === activeSection.moduleId) {
+                                const sections = module.sections || [];
                                 
-                                // 2. If last section, try quiz of current module
-                                if (module.quiz) {
-                                  setActiveQuiz({ moduleId: module._id, quizId: module.quiz._id });
-                                  setActiveSection(null);
-                                  setCurrentQuestionIndex(0);
-                                  navigated = true;
-                                  break;
-                                }
-                                
-                                // 3. If no quiz, try first section of next module
-                                if (i < modules.length - 1) {
-                                  const nextModule = modules[i + 1];
-                                  if (nextModule.sections && nextModule.sections.length > 0) {
-                                    setActiveSection({ 
-                                      moduleId: nextModule._id, 
-                                      sectionId: nextModule.sections[0]._id 
-                                    });
-                                    setActiveQuiz(null);
-                                    navigated = true;
+                                // Find current section index
+                                for (let j = 0; j < sections.length; j++) {
+                                  if (sections[j]._id === activeSection.sectionId) {
+                                    // 1. Try next section in current module
+                                    if (j < sections.length - 1) {
+                                      setActiveSection({ 
+                                        moduleId: module._id, 
+                                        sectionId: sections[j + 1]._id 
+                                      });
+                                      setActiveQuiz(null);
+                                      navigated = true;
+                                      break;
+                                    }
+                                    
+                                    // 2. If last section, try quiz of current module
+                                    if (module.quiz) {
+                                      setActiveQuiz({ moduleId: module._id, quizId: module.quiz._id });
+                                      setActiveSection(null);
+                                      setCurrentQuestionIndex(0);
+                                      navigated = true;
+                                      break;
+                                    }
+                                    
+                                    // 3. If no quiz, try first section of next module
+                                    if (i < modules.length - 1) {
+                                      const nextModule = modules[i + 1];
+                                      if (nextModule.sections && nextModule.sections.length > 0) {
+                                        setActiveSection({ 
+                                          moduleId: nextModule._id, 
+                                          sectionId: nextModule.sections[0]._id 
+                                        });
+                                        setActiveQuiz(null);
+                                        navigated = true;
+                                        break;
+                                      }
+                                      
+                                      // 4. If next module has no sections, try its quiz
+                                      if (nextModule.quiz) {
+                                        setActiveQuiz({ moduleId: nextModule._id, quizId: nextModule.quiz._id });
+                                        setActiveSection(null);
+                                        setCurrentQuestionIndex(0);
+                                        navigated = true;
+                                        break;
+                                      }
+                                    }
+                                    
+                                    // 5. If no next module, try final exam
+                                    if (course.finalExam) {
+                                      setActiveQuiz({ type: 'final' });
+                                      setActiveSection(null);
+                                      setCurrentQuestionIndex(0);
+                                      navigated = true;
+                                      break;
+                                    }
+                                    
                                     break;
                                   }
-                                  
-                                  // 4. If next module has no sections, try its quiz
-                                  if (nextModule.quiz) {
-                                    setActiveQuiz({ moduleId: nextModule._id, quizId: nextModule.quiz._id });
-                                    setActiveSection(null);
-                                    setCurrentQuestionIndex(0);
-                                    navigated = true;
-                                    break;
-                                  }
                                 }
-                                
-                                // 5. If no next module, try final exam
-                                if (course.finalExam) {
-                                  setActiveQuiz({ type: 'final' });
-                                  setActiveSection(null);
-                                  setCurrentQuestionIndex(0);
-                                  navigated = true;
-                                  break;
-                                }
-                                
-                                break;
+                                if (navigated) break;
                               }
                             }
-                            if (navigated) break;
-                          }
-                        }
-                      }}
-                      className="px-3 sm:px-4 lg:px-6 py-2 sm:py-2.5 lg:py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg text-xs sm:text-sm font-semibold transition-all shadow-md hover:shadow-lg flex items-center gap-1 sm:gap-2 cursor-pointer relative z-50"
-                      style={{ pointerEvents: 'auto' }}
-                    >
-                      <span className="hidden sm:inline">Next</span>
-                      <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
+                          }}
+                          className="px-3 sm:px-4 lg:px-6 py-2 sm:py-2.5 lg:py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg text-xs sm:text-sm font-semibold transition-all shadow-md hover:shadow-lg flex items-center gap-1 sm:gap-2 cursor-pointer relative z-50"
+                          style={{ pointerEvents: 'auto' }}
+                        >
+                          <span className="hidden sm:inline">Next</span>
+                          <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      );
+                    })()}
                     </div>
                   </div>
                 )}

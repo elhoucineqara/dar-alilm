@@ -166,7 +166,7 @@ export default function EditCoursePage() {
       .then((data) => {
         if (data) {
           if (data.user.role !== 'instructor') {
-            router.push('/dashboard');
+            router.push('/student/dashboard');
             return;
           }
           fetchCourse(token);
@@ -262,7 +262,7 @@ export default function EditCoursePage() {
     setAddingModule(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetchApi(`/api/instructor/courses/${courseId}/modules`, {
+      const res = await fetchApi(`/api/instructor/modules/${courseId}`, {
         method: 'POST',
         body: JSON.stringify({ 
           title: newModuleTitle.trim(),
@@ -276,11 +276,24 @@ export default function EditCoursePage() {
         setShowAddModuleForm(false);
         fetchCourse(token!);
       } else {
-        const data = await res.json();
-        console.error(data.error || 'Failed to create module');
+        // Check if response is JSON before parsing
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await res.json();
+          console.error(data.error || 'Failed to create module');
+        } else {
+          // Response is HTML (error page), get text instead
+          const text = await res.text();
+          console.error(`Failed to create module: ${res.status} ${res.statusText}`);
+          console.error('Response:', text.substring(0, 200)); // Log first 200 chars
+        }
       }
     } catch (error) {
-      console.error('An error occurred. Please try again.');
+      console.error('Error adding module:', error);
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+      }
     } finally {
       setAddingModule(false);
     }
@@ -519,6 +532,8 @@ export default function EditCoursePage() {
         // Load questions for the newly created/updated exam
         if (examData.quiz && examData.quiz._id) {
           await fetchFinalExamQuestions(examData.quiz._id);
+          // Automatically expand questions list
+          setExpandedFinalExamQuestions(true);
         }
       } else {
         const data = await res.json();
@@ -590,15 +605,44 @@ export default function EditCoursePage() {
       return;
     }
 
-    if (!course?.finalExam) {
-      return;
-    }
-
-    const finalExamId = typeof course.finalExam === 'string' ? course.finalExam : course.finalExam._id;
-
     setCreatingQuestion(true);
     try {
       const token = localStorage.getItem('token');
+      let finalExamId: string;
+
+      // Create final exam if it doesn't exist
+      if (!course?.finalExam) {
+        const examRes = await fetchApi(`/api/instructor/quizzes/course/${courseId}/final-exam`, {
+          method: 'POST',
+          body: JSON.stringify({
+            title: course?.title ? `Final Exam - ${course.title}` : 'Final Exam',
+            description: undefined,
+            passingScore: finalExamPassingScore || 60,
+            timeLimit: finalExamTimeLimit || undefined,
+          }),
+        });
+
+        if (!examRes.ok) {
+          const contentType = examRes.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await examRes.json();
+            console.error(errorData.error || 'Failed to create final exam');
+          } else {
+            const text = await examRes.text();
+            console.error(`Failed to create final exam: ${examRes.status} ${examRes.statusText}`);
+            console.error('Response:', text.substring(0, 200));
+          }
+          return;
+        }
+
+        const examData = await examRes.json();
+        finalExamId = examData.quiz._id;
+        
+        // Refresh course data to get the new final exam
+        await fetchCourse(token!);
+      } else {
+        finalExamId = typeof course.finalExam === 'string' ? course.finalExam : course.finalExam._id;
+      }
       
       // Create question
       const questionRes = await fetchApi(`/api/instructor/quizzes/${finalExamId}/questions`, {
@@ -611,8 +655,16 @@ export default function EditCoursePage() {
       });
 
       if (!questionRes.ok) {
-        const errorData = await questionRes.json();
-                                            console.error(errorData.error || 'Failed to create question');
+        // Check if response is JSON before parsing
+        const contentType = questionRes.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await questionRes.json();
+          console.error(errorData.error || 'Failed to create question');
+        } else {
+          const text = await questionRes.text();
+          console.error(`Failed to create question: ${questionRes.status} ${questionRes.statusText}`);
+          console.error('Response:', text.substring(0, 200));
+        }
         return;
       }
 
@@ -621,12 +673,8 @@ export default function EditCoursePage() {
 
       // Create answers
       if (questionType === 'true_false') {
-        await fetchApi(`/api/instructor/questions/${newQuestionId}/answers`, {
+        const trueRes = await fetchApi(`/api/instructor/quizzes/question/${newQuestionId}/answers`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify({
             answer: 'True',
             isCorrect: questionAnswers.find(a => a.text.toLowerCase() === 'true')?.isCorrect || false,
@@ -634,21 +682,37 @@ export default function EditCoursePage() {
           }),
         });
 
-        await fetchApi(`/api/instructor/questions/${newQuestionId}/answers`, {
+        if (!trueRes.ok) {
+          const contentType = trueRes.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await trueRes.json();
+            console.error(errorData.error || 'Failed to create True answer');
+          } else {
+            console.error(`Failed to create True answer: ${trueRes.status} ${trueRes.statusText}`);
+          }
+        }
+
+        const falseRes = await fetchApi(`/api/instructor/quizzes/question/${newQuestionId}/answers`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify({
             answer: 'False',
             isCorrect: questionAnswers.find(a => a.text.toLowerCase() === 'false')?.isCorrect || false,
             order: 1,
           }),
         });
+
+        if (!falseRes.ok) {
+          const contentType = falseRes.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await falseRes.json();
+            console.error(errorData.error || 'Failed to create False answer');
+          } else {
+            console.error(`Failed to create False answer: ${falseRes.status} ${falseRes.statusText}`);
+          }
+        }
       } else {
         for (let i = 0; i < questionAnswers.length; i++) {
-          await fetchApi(`/api/instructor/quizzes/question/${newQuestionId}/answers`, {
+          const answerRes = await fetchApi(`/api/instructor/quizzes/question/${newQuestionId}/answers`, {
             method: 'POST',
             body: JSON.stringify({
               answer: questionAnswers[i].text.trim(),
@@ -656,6 +720,16 @@ export default function EditCoursePage() {
               order: i,
             }),
           });
+
+          if (!answerRes.ok) {
+            const contentType = answerRes.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+              const errorData = await answerRes.json();
+              console.error(errorData.error || `Failed to create answer ${i + 1}`);
+            } else {
+              console.error(`Failed to create answer ${i + 1}: ${answerRes.status} ${answerRes.statusText}`);
+            }
+          }
         }
       }
 
@@ -667,11 +741,25 @@ export default function EditCoursePage() {
       setEditingQuestion(null);
       setShowFinalExamQuestionForm(false);
       
-      // Refresh questions
+      // Refresh questions and expand to show them
       await fetchFinalExamQuestions(finalExamId);
       await fetchCourse(token!);
+      
+      // Automatically expand questions list to show the newly added question
+      setExpandedFinalExamQuestions(true);
+      
+      // Scroll to questions after a short delay to ensure they're rendered
+      setTimeout(() => {
+        if (finalExamQuestionsRef.current) {
+          finalExamQuestionsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 300);
     } catch (error) {
-      console.error('An error occurred. Please try again.');
+      console.error('Error adding final exam question:', error);
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+      }
     } finally {
       setCreatingQuestion(false);
     }
@@ -933,8 +1021,16 @@ export default function EditCoursePage() {
       });
 
       if (!questionRes.ok) {
-        const errorData = await questionRes.json();
-                                            console.error(errorData.error || 'Failed to create question');
+        // Check if response is JSON before parsing
+        const contentType = questionRes.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await questionRes.json();
+          console.error(errorData.error || 'Failed to create question');
+        } else {
+          const text = await questionRes.text();
+          console.error(`Failed to create question: ${questionRes.status} ${questionRes.statusText}`);
+          console.error('Response:', text.substring(0, 200));
+        }
         return;
       }
 
@@ -944,12 +1040,8 @@ export default function EditCoursePage() {
       // Create answers
       if (questionType === 'true_false') {
         // For true/false, create True and False answers
-        const trueAnswer = await fetchApi(`/api/instructor/questions/${newQuestionId}/answers`, {
+        const trueRes = await fetchApi(`/api/instructor/quizzes/question/${newQuestionId}/answers`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify({
             answer: 'True',
             isCorrect: questionAnswers.find(a => a.text.toLowerCase() === 'true')?.isCorrect || false,
@@ -957,33 +1049,55 @@ export default function EditCoursePage() {
           }),
         });
 
-        const falseAnswer = await fetchApi(`/api/instructor/questions/${newQuestionId}/answers`, {
+        if (!trueRes.ok) {
+          const contentType = trueRes.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await trueRes.json();
+            console.error(errorData.error || 'Failed to create True answer');
+          } else {
+            console.error(`Failed to create True answer: ${trueRes.status} ${trueRes.statusText}`);
+          }
+        }
+
+        const falseRes = await fetchApi(`/api/instructor/quizzes/question/${newQuestionId}/answers`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify({
             answer: 'False',
             isCorrect: questionAnswers.find(a => a.text.toLowerCase() === 'false')?.isCorrect || false,
             order: 1,
           }),
         });
+
+        if (!falseRes.ok) {
+          const contentType = falseRes.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await falseRes.json();
+            console.error(errorData.error || 'Failed to create False answer');
+          } else {
+            console.error(`Failed to create False answer: ${falseRes.status} ${falseRes.statusText}`);
+          }
+        }
       } else {
         // For QCM and multiple correct, create answers from form
         for (let i = 0; i < questionAnswers.length; i++) {
-          await fetchApi(`/api/instructor/questions/${newQuestionId}/answers`, {
+          const answerRes = await fetchApi(`/api/instructor/quizzes/question/${newQuestionId}/answers`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
             body: JSON.stringify({
               answer: questionAnswers[i].text.trim(),
               isCorrect: questionAnswers[i].isCorrect,
               order: i,
             }),
           });
+
+          if (!answerRes.ok) {
+            const contentType = answerRes.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+              const errorData = await answerRes.json();
+              console.error(errorData.error || `Failed to create answer ${i + 1}`);
+            } else {
+              console.error(`Failed to create answer ${i + 1}: ${answerRes.status} ${answerRes.statusText}`);
+            }
+          }
         }
       }
 
@@ -997,7 +1111,11 @@ export default function EditCoursePage() {
       // Refresh questions
       await fetchQuizQuestions(quizId);
     } catch (error) {
-      console.error('An error occurred. Please try again.');
+      console.error('Error adding question:', error);
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+      }
     } finally {
       setCreatingQuestion(false);
     }
@@ -2567,33 +2685,44 @@ export default function EditCoursePage() {
                         </button>
                         <button
                           type="button"
-                          onClick={async () => {
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
                             // If exam doesn't exist, create it first
                             if (!course.finalExam) {
                               const token = localStorage.getItem('token');
                               try {
-                                const res = await fetchApi(`/api/instructor/courses/${courseId}/final-exam`, {
+                                const res = await fetchApi(`/api/instructor/quizzes/course/${courseId}/final-exam`, {
                                   method: 'POST',
-                                  headers: {
-                                    'Content-Type': 'application/json',
-                                    Authorization: `Bearer ${token}`,
-                                  },
                                   body: JSON.stringify({
                                     title: course?.title ? `Final Exam - ${course.title}` : 'Final Exam',
                                     description: undefined,
-                                    passingScore: finalExamPassingScore,
+                                    passingScore: finalExamPassingScore || 60,
                                     timeLimit: finalExamTimeLimit || undefined,
                                   }),
                                 });
                                 if (res.ok) {
-                                  await fetchCourse(token!);
                                   const examData = await res.json();
+                                  await fetchCourse(token!);
                                   if (examData.quiz && examData.quiz._id) {
                                     await fetchFinalExamQuestions(examData.quiz._id);
+                                    // Automatically expand questions list
+                                    setExpandedFinalExamQuestions(true);
                                   }
+                                } else {
+                                  const contentType = res.headers.get('content-type');
+                                  if (contentType && contentType.includes('application/json')) {
+                                    const errorData = await res.json();
+                                    console.error(errorData.error || 'Failed to create final exam');
+                                  } else {
+                                    const text = await res.text();
+                                    console.error(`Failed to create final exam: ${res.status} ${res.statusText}`);
+                                    console.error('Response:', text.substring(0, 200));
+                                  }
+                                  return;
                                 }
                               } catch (error) {
-                                console.error('Failed to create exam. Please try again.');
+                                console.error('Failed to create exam. Please try again.', error);
                                 return;
                               }
                             }
@@ -2732,39 +2861,6 @@ export default function EditCoursePage() {
                   })()}
                   </div>
                   
-                  {/* Publish Course Button */}
-                  {course.status !== 'published' && (
-                    <div className="bg-white rounded-lg shadow-md border border-gray-200 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="text-base font-semibold text-gray-900 mb-1">Ready to Publish?</h4>
-                          <p className="text-sm text-gray-600">Your course has a final exam. You can now publish it to make it available to students.</p>
-                        </div>
-                        <button
-                          onClick={handlePublishCourse}
-                          disabled={publishingCourse}
-                          className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                        >
-                          {publishingCourse ? (
-                            <>
-                              <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                              </svg>
-                              Publishing...
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                              </svg>
-                              Publish Course
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  
                   {course.status === 'published' && showPublishedMessage && (
                     <div className="bg-green-50 rounded-lg border border-green-200 p-4 animate-fade-in">
                       <div className="flex items-center gap-2">
@@ -2782,34 +2878,42 @@ export default function EditCoursePage() {
               {course.finalExam && expandedFinalExamQuestions && finalExamQuestions.length > 0 && (
                 <div 
                   ref={finalExamQuestionsRef}
-                  className="bg-white rounded-lg border border-gray-200 p-4 space-y-2"
+                  className="bg-white rounded-lg border border-gray-200 p-5 space-y-4 mt-4"
                 >
+                  <h4 className="text-sm font-bold text-gray-900 mb-3">Questions List</h4>
                   {finalExamQuestions.map((q: Question, index: number) => (
-                    <div key={q._id} className="flex items-start justify-between p-3 bg-gray-50 rounded border border-gray-200">
+                    <div key={q._id} className="flex items-start justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium text-gray-500">Q{index + 1}:</span>
-                          <span className="text-sm text-gray-900">{q.question}</span>
-                          <span className={`px-2 py-0.5 text-xs rounded ${
+                        <div className="flex items-center gap-3 mb-2 flex-wrap">
+                          <span className="text-sm font-bold text-blue-600 bg-blue-100 px-2 py-1 rounded">Q{index + 1}</span>
+                          <span className="text-sm font-semibold text-gray-900 flex-1">{q.question}</span>
+                          <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
                             q.type === 'qcm' ? 'bg-blue-100 text-blue-700' :
                             q.type === 'true_false' ? 'bg-green-100 text-green-700' :
                             'bg-purple-100 text-purple-700'
                           }`}>
                             {q.type === 'qcm' ? 'QCM' : q.type === 'true_false' ? 'True/False' : 'Multiple'}
                           </span>
-                          <span className="text-xs text-gray-500">({q.points} pts)</span>
+                          <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded">({q.points} pts)</span>
                         </div>
                         {q.answers && q.answers.length > 0 && (
-                          <div className="ml-4 mt-1 space-y-1">
+                          <div className="ml-2 mt-3 space-y-2 pl-4 border-l-2 border-gray-200">
                             {q.answers.map((a: Answer) => (
-                              <div key={a._id} className="text-xs text-gray-600">
-                                {a.isCorrect ? '✓' : '○'} {a.answer}
+                              <div key={a._id} className={`text-sm flex items-center gap-2 ${
+                                a.isCorrect ? 'text-green-700 font-semibold' : 'text-gray-600'
+                              }`}>
+                                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
+                                  a.isCorrect ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'
+                                }`}>
+                                  {a.isCorrect ? '✓' : '○'}
+                                </span>
+                                <span>{a.answer}</span>
                               </div>
                             ))}
                           </div>
                         )}
                       </div>
-                      <div className="flex gap-1">
+                      <div className="flex gap-2 ml-4">
                         <button
                           onClick={() => {
                             handleEditQuestion(q);
@@ -2818,25 +2922,25 @@ export default function EditCoursePage() {
                               questionFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                             }, 100);
                           }}
-                          className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                           title="Edit question"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                         </button>
                         <button
                           onClick={() => handleDeleteFinalExamQuestion(q._id)}
                           disabled={deletingQuestion === q._id}
-                          className="p-1 text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                           title="Delete question"
                         >
                           {deletingQuestion === q._id ? (
-                            <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                             </svg>
                           ) : (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                           )}
@@ -2847,12 +2951,63 @@ export default function EditCoursePage() {
                 </div>
               )}
 
+              {/* Publish Course Button - After questions */}
+              {course.finalExam && course.status !== 'published' && expandedFinalExamQuestions && (
+                <div className="bg-white rounded-lg shadow-md border border-gray-200 p-4 mt-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-base font-semibold text-gray-900 mb-1">Ready to Publish?</h4>
+                      <p className="text-sm text-gray-600">Your course has a final exam. You can now publish it to make it available to students.</p>
+                    </div>
+                    <button
+                      onClick={handlePublishCourse}
+                      disabled={publishingCourse}
+                      className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {publishingCourse ? (
+                        <>
+                          <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Publishing...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                          Publish Course
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Question Form for Final Exam */}
               {course.finalExam && showFinalExamQuestionForm && (
-                <div ref={questionFormRef} className="bg-gray-50 rounded-lg border border-gray-200 p-4">
-                  <h6 className="text-sm font-bold text-gray-900 mb-3">
-                    {editingQuestion ? 'Edit Question' : 'Add New Question'}
-                  </h6>
+                <div ref={questionFormRef} className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-4">
+                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200">
+                    <h6 className="text-base font-bold text-gray-900">
+                      {editingQuestion ? 'Edit Question' : 'Add New Question'}
+                    </h6>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowFinalExamQuestionForm(false);
+                        setEditingQuestion(null);
+                        setQuestionText('');
+                        setQuestionType('qcm');
+                        setQuestionPoints(1);
+                        setQuestionAnswers([]);
+                      }}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
                   <form onSubmit={(e) => {
                     e.preventDefault();
                     if (editingQuestion) {
@@ -2860,23 +3015,23 @@ export default function EditCoursePage() {
                     } else {
                       handleAddFinalExamQuestion(e);
                     }
-                  }} className="space-y-3">
+                  }} className="space-y-4">
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
                         Question Text <span className="text-red-500">*</span>
                       </label>
                       <textarea
                         value={questionText}
                         onChange={(e) => setQuestionText(e.target.value)}
-                        rows={2}
-                        className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none"
-                        placeholder="Enter your question"
+                        rows={3}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none transition-all"
+                        placeholder="Enter your question here..."
                         required
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
                           Type <span className="text-red-500">*</span>
                         </label>
                         <select
@@ -2892,7 +3047,7 @@ export default function EditCoursePage() {
                               setQuestionAnswers([]);
                             }
                           }}
-                          className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white"
                           required
                         >
                           <option value="qcm">QCM (Single Choice)</option>
@@ -2901,7 +3056,7 @@ export default function EditCoursePage() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
                           Points
                         </label>
                         <input
@@ -2909,28 +3064,31 @@ export default function EditCoursePage() {
                           value={questionPoints}
                           onChange={(e) => setQuestionPoints(Number(e.target.value))}
                           min="1"
-                          className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                         />
                       </div>
                     </div>
                     
                     {questionType !== 'true_false' && (
                       <div>
-                        <div className="flex justify-between items-center mb-2">
-                          <label className="block text-xs font-medium text-gray-700">
+                        <div className="flex justify-between items-center mb-3">
+                          <label className="block text-sm font-semibold text-gray-700">
                             Answers <span className="text-red-500">*</span>
                           </label>
                           <button
                             type="button"
                             onClick={() => setQuestionAnswers([...questionAnswers, { text: '', isCorrect: false }])}
-                            className="text-xs text-blue-600 hover:text-blue-700"
+                            className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 transition-colors"
                           >
-                            + Add Answer
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                            Add Answer
                           </button>
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                           {questionAnswers.map((answer, index) => (
-                            <div key={index} className="flex gap-2 items-center">
+                            <div key={index} className="flex gap-3 items-center p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
                               <input
                                 type="text"
                                 value={answer.text}
@@ -2939,11 +3097,11 @@ export default function EditCoursePage() {
                                   newAnswers[index].text = e.target.value;
                                   setQuestionAnswers(newAnswers);
                                 }}
-                                className="flex-1 px-3 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white"
                                 placeholder={`Answer ${index + 1}`}
                                 required
                               />
-                              <label className="flex items-center gap-1 text-xs text-gray-700 cursor-pointer">
+                              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors">
                                 <input
                                   type="checkbox"
                                   checked={answer.isCorrect}
@@ -2952,16 +3110,17 @@ export default function EditCoursePage() {
                                     newAnswers[index].isCorrect = e.target.checked;
                                     setQuestionAnswers(newAnswers);
                                   }}
-                                  className="w-4 h-4"
+                                  className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
                                 />
-                                Correct
+                                <span className="font-medium">Correct</span>
                               </label>
                               <button
                                 type="button"
                                 onClick={() => setQuestionAnswers(questionAnswers.filter((_, i) => i !== index))}
-                                className="p-1 text-red-600 hover:bg-red-50 rounded"
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Remove answer"
                               >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                 </svg>
                               </button>
@@ -2972,9 +3131,12 @@ export default function EditCoursePage() {
                     )}
                     
                     {questionType === 'true_false' && (
-                      <div className="space-y-2">
+                      <div className="space-y-3">
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Select Correct Answer
+                        </label>
                         {questionAnswers.map((answer, index) => (
-                          <label key={index} className="flex items-center gap-2 p-2 border border-gray-300 rounded cursor-pointer hover:bg-gray-50">
+                          <label key={index} className="flex items-center gap-3 p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all bg-white">
                             <input
                               type="radio"
                               name="trueFalseFinalExam"
@@ -2986,15 +3148,15 @@ export default function EditCoursePage() {
                                 }));
                                 setQuestionAnswers(newAnswers);
                               }}
-                              className="w-4 h-4"
+                              className="w-5 h-5 text-blue-600 focus:ring-blue-500"
                             />
-                            <span className="text-sm text-gray-700">{answer.text}</span>
+                            <span className="text-sm font-medium text-gray-700">{answer.text}</span>
                           </label>
                         ))}
                       </div>
                     )}
                     
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
                       <button
                         type="button"
                         onClick={() => {
@@ -3005,16 +3167,23 @@ export default function EditCoursePage() {
                           setQuestionPoints(1);
                           setQuestionAnswers([]);
                         }}
-                        className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded text-xs font-medium hover:bg-gray-50 transition-colors"
+                        className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
                         disabled={creatingQuestion || !questionText.trim() || (questionType !== 'true_false' && questionAnswers.length < 2) || (questionType !== 'true_false' && !questionAnswers.some(a => a.isCorrect))}
-                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
                       >
-                        {creatingQuestion ? 'Saving...' : editingQuestion ? 'Update Question' : 'Add Question'}
+                        {creatingQuestion ? (
+                          <span className="flex items-center gap-2">
+                            <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            Saving...
+                          </span>
+                        ) : editingQuestion ? 'Update Question' : 'Add Question'}
                       </button>
                     </div>
                   </form>

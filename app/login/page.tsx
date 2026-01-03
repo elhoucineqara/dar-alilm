@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { fetchApi } from '@/lib/api-client';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams?.get('redirect');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -27,9 +29,9 @@ export default function LoginPage() {
         if (user.role === 'admin') {
           router.push('/admin');
         } else if (user.role === 'instructor') {
-          router.push('/instructor');
+          router.push('/instructor/dashboard');
         } else {
-          router.push('/dashboard');
+          router.push('/student/dashboard');
         }
         return;
       } catch (e) {
@@ -61,12 +63,15 @@ export default function LoginPage() {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
 
-      if (data.user.role === 'admin') {
+      // Redirect to the specified URL if provided, otherwise redirect based on role
+      if (redirect) {
+        router.push(redirect);
+      } else if (data.user.role === 'admin') {
         router.push('/admin');
       } else if (data.user.role === 'instructor') {
-        router.push('/instructor');
+        router.push('/instructor/dashboard');
       } else {
-        router.push('/dashboard');
+        router.push('/student/dashboard');
       }
     } catch (err) {
       setError('An error occurred. Please try again.');

@@ -3,12 +3,12 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function InstructorRedirect() {
+export default function StudentRedirect() {
   const router = useRouter();
 
   useEffect(() => {
-    // Redirect to instructor dashboard
-    router.replace('/instructor/dashboard');
+    // Redirect to student dashboard
+    router.replace('/student/dashboard');
   }, [router]);
 
   return (
@@ -20,4 +20,3 @@ export default function InstructorRedirect() {
     </div>
   );
 }
-

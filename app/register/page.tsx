@@ -22,7 +22,7 @@ export default function RegisterPage() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
-      router.push('/dashboard');
+      router.push('/student/dashboard');
     } else {
       setCheckingAuth(false);
     }
@@ -53,9 +53,9 @@ export default function RegisterPage() {
       if (data.user.role === 'admin') {
         router.push('/admin');
       } else if (data.user.role === 'instructor') {
-        router.push('/instructor');
+        router.push('/instructor/dashboard');
       } else {
-        router.push('/dashboard');
+        router.push('/student/dashboard');
       }
     } catch (err) {
       setError('An error occurred. Please try again.');

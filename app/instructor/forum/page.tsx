@@ -86,7 +86,7 @@ export default function ForumPage() {
       .then((data) => {
         if (data) {
           if (data.user.role !== 'instructor') {
-            router.push('/dashboard');
+            router.push('/student/dashboard');
             return;
           }
           setCurrentUser(data.user);
@@ -121,7 +121,6 @@ export default function ForumPage() {
       setFilteredPosts(posts);
     } else {
       const filtered = posts.filter(post =>
-        post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         post.content.toLowerCase().includes(searchQuery.toLowerCase())
       );
       setFilteredPosts(filtered);
@@ -598,10 +597,7 @@ export default function ForumPage() {
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 cursor-pointer" onClick={() => router.push(`/instructor/forum/${post._id}`)}>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2 hover:text-blue-600 transition-colors">
-                    {post.title}
-                  </h3>
-                  <p className="text-gray-600 text-sm mb-3 line-clamp-2">
+                  <p className="text-gray-900 text-base font-medium mb-3 line-clamp-3">
                     {post.content}
                   </p>
                   

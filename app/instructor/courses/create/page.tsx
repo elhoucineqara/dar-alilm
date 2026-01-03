@@ -49,7 +49,7 @@ export default function CreateCoursePage() {
       .then((data) => {
         if (data) {
           if (data.user.role !== 'instructor') {
-            router.push('/dashboard');
+            router.push('/student/dashboard');
             return;
           }
           fetchCategories(token);

@@ -18,7 +18,6 @@ export default function CreateForumPostPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('general');
   const [error, setError] = useState('');
@@ -55,7 +54,7 @@ export default function CreateForumPostPage() {
         
         // Verify user is an instructor
         if (data.user.role !== 'instructor') {
-          router.push('/dashboard');
+          router.push('/student/dashboard');
           return;
         }
         
@@ -77,12 +76,7 @@ export default function CreateForumPostPage() {
     e.preventDefault();
     setError('');
 
-    console.log('Form submitted', { title, content, category });
-
-    if (!title.trim()) {
-      setError('Title is required');
-      return;
-    }
+    console.log('Form submitted', { content, category });
 
     if (!content.trim()) {
       setError('Content is required');
@@ -101,7 +95,7 @@ export default function CreateForumPostPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ title, content, category }),
+        body: JSON.stringify({ content, category }),
       });
 
       console.log('Response received:', res.status);

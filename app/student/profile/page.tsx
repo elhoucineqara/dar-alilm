@@ -14,7 +14,7 @@ interface User {
   phone?: string;
 }
 
-export default function ProfilePage() {
+export default function StudentProfilePage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,15 +52,27 @@ export default function ProfilePage() {
 
       if (res.ok) {
         const data = await res.json();
-        setUser(data.user);
+        const userData = data.user || data;
+        
+        // Check if user is a student
+        if (userData.role && userData.role !== 'student') {
+          if (userData.role === 'instructor') {
+            router.push('/instructor/profile');
+          } else {
+            router.push('/');
+          }
+          return;
+        }
+        
+        setUser(userData);
         setProfileData({
-          firstName: data.user.firstName || '',
-          lastName: data.user.lastName || '',
-          email: data.user.email || '',
-          phone: data.user.phone || '',
+          firstName: userData.firstName || '',
+          lastName: userData.lastName || '',
+          email: userData.email || '',
+          phone: userData.phone || '',
         });
-        if (data.user.profileImage) {
-          setProfileImagePreview(getFileUrl(data.user.profileImage));
+        if (userData.profileImage) {
+          setProfileImagePreview(getFileUrl(userData.profileImage));
         }
       } else {
         router.push('/login');
@@ -101,7 +113,7 @@ export default function ProfilePage() {
         const formData = new FormData();
         formData.append('file', profileImage);
 
-        const uploadResponse = await fetchApi('/api/upload', {
+        const uploadResponse = await fetchApi('/api/student/upload', {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -111,7 +123,7 @@ export default function ProfilePage() {
 
         if (uploadResponse.ok) {
           const uploadData = await uploadResponse.json();
-          profileImageId = uploadData.fileId;
+          profileImageId = uploadData.fileUrl;
         } else {
           alert('Failed to upload profile image');
           setSaving(false);
@@ -119,7 +131,7 @@ export default function ProfilePage() {
         }
       }
 
-      const response = await fetchApi('/api/instructor/profile', {
+      const response = await fetchApi('/api/student/profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -135,7 +147,7 @@ export default function ProfilePage() {
         // Reset image state
         setProfileImage(null);
         // Redirect to dashboard
-        router.push('/instructor/dashboard');
+        router.push('/student/dashboard');
       } else {
         alert('Failed to update profile');
       }
@@ -301,3 +313,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+

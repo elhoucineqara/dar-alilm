@@ -25,6 +25,12 @@ interface Course {
   createdAt: string;
 }
 
+interface Statistics {
+  totalStudents: number;
+  totalCourses: number;
+  totalInstructors: number;
+}
+
 export default function Home() {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -32,6 +38,12 @@ export default function Home() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [courses, setCourses] = useState<Course[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
+  const [statistics, setStatistics] = useState<Statistics>({
+    totalStudents: 0,
+    totalCourses: 0,
+    totalInstructors: 0,
+  });
+  const [loadingStats, setLoadingStats] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -47,9 +59,37 @@ export default function Home() {
       }
     }
 
-    // Fetch published courses
+    // Fetch published courses and statistics
     fetchPublishedCourses();
+    fetchStatistics();
   }, []);
+
+  const fetchStatistics = async () => {
+    try {
+      setLoadingStats(true);
+      const res = await fetchApi('/api/courses/statistics');
+      console.log('Statistics API response status:', res.status);
+      
+      if (res.ok) {
+        const data = await res.json();
+        console.log('Statistics API data:', data);
+        
+        if (data.statistics) {
+          console.log('Setting statistics:', data.statistics);
+          setStatistics(data.statistics);
+        } else {
+          console.error('No statistics in response:', data);
+        }
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('Statistics API error:', res.status, errorData);
+      }
+    } catch (error) {
+      console.error('Error fetching statistics:', error);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
 
   const fetchPublishedCourses = async () => {
     try {
@@ -71,9 +111,9 @@ export default function Home() {
     if (userRole === 'admin') {
       router.push('/admin');
     } else if (userRole === 'instructor') {
-      router.push('/instructor');
+      router.push('/instructor/dashboard');
     } else {
-      router.push('/dashboard');
+      router.push('/student/dashboard');
     }
   };
 
@@ -97,6 +137,9 @@ export default function Home() {
                 </Link>
                 <Link href="/courses" className="text-gray-700 hover:text-blue-600 font-medium transition-colors text-sm">
                   Courses
+                </Link>
+                <Link href="/forum" className="text-gray-700 hover:text-blue-600 font-medium transition-colors text-sm">
+                  Forum
                 </Link>
                 <Link href="/about" className="text-gray-700 hover:text-blue-600 font-medium transition-colors text-sm">
                   About
@@ -155,7 +198,7 @@ export default function Home() {
                 <div className="lg:hidden flex items-center gap-2">
                   {isAuthenticated ? (
                     <Link
-                      href={userRole === 'admin' ? '/admin' : userRole === 'instructor' ? '/instructor' : '/dashboard'}
+                      href={userRole === 'admin' ? '/admin' : userRole === 'instructor' ? '/instructor/dashboard' : '/student/dashboard'}
                       onClick={handleDashboardClick}
                       className="text-gray-700 hover:text-blue-600 text-xs font-medium px-2 py-1 rounded hover:bg-blue-50 transition-all"
                     >
@@ -201,11 +244,18 @@ export default function Home() {
                   Courses
                 </Link>
                 <Link
+                  href="/forum"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-gray-700 hover:text-blue-600 font-medium px-2 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Forum
+                </Link>
+                <Link
                   href="/about"
                   onClick={() => setMobileMenuOpen(false)}
                   className="text-gray-700 hover:text-blue-600 font-medium px-2 py-2 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Contact
+                  About
                 </Link>
                 <Link
                   href="/contact"
@@ -279,15 +329,39 @@ export default function Home() {
               {/* Stats */}
               <div className="grid grid-cols-3 gap-2 sm:gap-4 pt-4">
                 <div>
-                  <div className="text-xl sm:text-2xl font-bold text-gray-900">10K+</div>
+                  {loadingStats ? (
+                    <div className="text-xl sm:text-2xl font-bold text-gray-900 animate-pulse">...</div>
+                  ) : (
+                    <div className="text-xl sm:text-2xl font-bold text-gray-900">
+                      {statistics.totalStudents >= 1000 
+                        ? `${(statistics.totalStudents / 1000).toFixed(1)}K+`
+                        : `${statistics.totalStudents || 0}${statistics.totalStudents > 0 ? '+' : ''}`}
+                    </div>
+                  )}
                   <div className="text-xs text-gray-600">Students</div>
                 </div>
                 <div>
-                  <div className="text-xl sm:text-2xl font-bold text-gray-900">500+</div>
+                  {loadingStats ? (
+                    <div className="text-xl sm:text-2xl font-bold text-gray-900 animate-pulse">...</div>
+                  ) : (
+                    <div className="text-xl sm:text-2xl font-bold text-gray-900">
+                      {statistics.totalCourses >= 1000 
+                        ? `${(statistics.totalCourses / 1000).toFixed(1)}K+`
+                        : `${statistics.totalCourses || 0}${statistics.totalCourses > 0 ? '+' : ''}`}
+                    </div>
+                  )}
                   <div className="text-xs text-gray-600">Courses</div>
                 </div>
                 <div>
-                  <div className="text-xl sm:text-2xl font-bold text-gray-900">50+</div>
+                  {loadingStats ? (
+                    <div className="text-xl sm:text-2xl font-bold text-gray-900 animate-pulse">...</div>
+                  ) : (
+                    <div className="text-xl sm:text-2xl font-bold text-gray-900">
+                      {statistics.totalInstructors >= 1000 
+                        ? `${(statistics.totalInstructors / 1000).toFixed(1)}K+`
+                        : `${statistics.totalInstructors || 0}${statistics.totalInstructors > 0 ? '+' : ''}`}
+                    </div>
+                  )}
                   <div className="text-xs text-gray-600">Instructors</div>
                 </div>
               </div>
@@ -423,13 +497,13 @@ export default function Home() {
                                     const errorData = await enrollRes.json();
                                     // If already enrolled, that's fine - redirect to dashboard
                                     if (errorData.error === 'Already enrolled in this course') {
-                                      router.push(`/dashboard/courses/${course._id}`);
+                                      router.push(`/student/courses/${course._id}`);
                                       return;
                                     }
                                     console.error('Enrollment error:', errorData);
                                   } else {
                                     // Successfully enrolled, redirect to dashboard course page
-                                    router.push(`/dashboard/courses/${course._id}`);
+                                    router.push(`/student/courses/${course._id}`);
                                     return;
                                   }
                                 } catch (enrollError) {
@@ -573,7 +647,8 @@ export default function Home() {
               <h5 className="text-white font-semibold mb-4">Contact</h5>
               <ul className="space-y-2 text-sm">
                 <li>Email: support@daralilm.com</li>
-                <li>Phone: +212 637446431</li>
+                <li>Phone: <a href="tel:+212637446431" className="hover:text-white transition-colors">+212 637446431</a></li>
+                <li>Location: Bouznika, Morocco</li>
               </ul>
             </div>
           </div>

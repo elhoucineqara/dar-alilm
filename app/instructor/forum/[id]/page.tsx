@@ -101,7 +101,7 @@ export default function ForumPostPage() {
         console.log('Auth data received:', data);
         
         if (data.user.role !== 'instructor') {
-          router.push('/dashboard');
+          router.push('/student/dashboard');
           return;
         }
         
@@ -260,9 +260,6 @@ export default function ForumPostPage() {
           </div>
         )}
 
-        {/* Title */}
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4">{post.title}</h1>
-
         {/* Meta Information */}
         <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-6 pb-6 border-b border-gray-200">
           <div className="flex items-center gap-2">
@@ -307,7 +304,7 @@ export default function ForumPostPage() {
 
         {/* Content */}
         <div className="prose max-w-none mb-6">
-          <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+          <p className="text-gray-900 text-lg font-medium whitespace-pre-wrap leading-relaxed">{post.content}</p>
         </div>
 
         {/* Media Gallery */}
