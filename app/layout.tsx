@@ -41,6 +41,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <meta name="google-adsense-account" content="ca-pub-7245366364935377">
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7245366364935377"
+       crossorigin="anonymous"></script>
+      </head>
       <body className="antialiased flex flex-col min-h-screen">
         {children}
         <ConditionalFooter />
