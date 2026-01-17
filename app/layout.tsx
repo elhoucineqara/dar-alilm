@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import ConditionalFooter from "@/components/ConditionalFooter";
+import Script from 'next/script'
 
 export const metadata: Metadata = {
   title: "Dar Al-Ilm - Online Learning Platform",
